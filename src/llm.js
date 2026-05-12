@@ -1,8 +1,8 @@
 import OpenAI from 'openai';
 import { getSystemPrompt } from './prompts.js';
 
-export async function generateNote(config, { type, topic, content: rawContent, existingFiles }, OpenAIClient = OpenAI) {
-  const provider = config.providers.default;
+export async function generateNote(config, { type, topic, content: rawContent, existingFiles, providerName = 'default' }, OpenAIClient = OpenAI) {
+  const provider = config.providers[providerName] || config.providers.default;
   const client = new OpenAIClient({ apiKey: provider.apiKey, baseURL: provider.baseURL });
 
   const systemPrompt = getSystemPrompt(type, config.pillars, existingFiles);

@@ -44,3 +44,34 @@ test('generateNote calls OpenAI with correct parameters', async (t) => {
   assert.match(MockOpenAI.lastPayload.messages[0].content, /Create a personal wiki note of type: how/);
   assert.match(MockOpenAI.lastPayload.messages[1].content, /test topic/);
 });
+
+test('generateNote uses custom provider if specified', async (t) => {
+  const config = {
+    pillars: ['Tech'],
+    providers: {
+      default: { apiKey: 'default-key' },
+      custom: { apiKey: 'custom-key', baseURL: 'https://custom.api', model: 'custom-model' }
+    }
+  };
+
+  class MockOpenAI {
+    constructor({ apiKey, baseURL }) {
+      this.apiKey = apiKey;
+      this.baseURL = baseURL;
+      this.chat = {
+        completions: {
+          create: async (payload) => {
+            MockOpenAI.lastPayload = payload;
+            MockOpenAI.lastApiKey = apiKey;
+            return { choices: [{ message: { content: 'custom content' } }] };
+          }
+        }
+      };
+    }
+  }
+
+  await generateNote(config, { type: 'what', topic: 'x', existingFiles: [], providerName: 'custom' }, MockOpenAI);
+  
+  assert.strictEqual(MockOpenAI.lastApiKey, 'custom-key');
+  assert.strictEqual(MockOpenAI.lastPayload.model, 'custom-model');
+});

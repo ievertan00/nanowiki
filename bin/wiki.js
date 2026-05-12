@@ -7,7 +7,7 @@ import { loadConfig } from '../src/config.js';
 import { initVault, getVaultFiles, appendLog } from '../src/vault.js';
 import { generateNote } from '../src/llm.js';
 import { saveNote } from '../src/note.js';
-import { updateMOC } from '../src/meta.js';
+import { updateMOC, updateIndex } from '../src/meta.js';
 
 const program = new Command();
 let config;
@@ -23,7 +23,8 @@ try {
 program
   .name('wiki')
   .description('Personal Wiki CLI')
-  .version('1.0.0');
+  .version('1.0.0')
+  .option('--provider <name>', 'LLM provider', 'default');
 
 const COMMANDS = ['how', 'what', 'why', 'fact'];
 
@@ -32,13 +33,20 @@ COMMANDS.forEach(type => {
     .command(type)
     .argument('<topic>')
     .action(async (topic) => {
-      console.log(chalk.blue(`Generating ${type} note for: ${topic}...`));
+      const options = program.opts();
+      console.log(chalk.blue(`Generating ${type} note for: ${topic} (provider: ${options.provider})...`));
       const existingFiles = getVaultFiles(config.wikiPath);
-      const content = await generateNote(config, { type, topic, existingFiles });
+      const content = await generateNote(config, { 
+        type, 
+        topic, 
+        existingFiles, 
+        providerName: options.provider 
+      });
       const savedPath = saveNote(config.wikiPath, { type, title: topic, content });
       appendLog(config.wikiPath, `Created ${type} note: ${topic}`);
       console.log(chalk.green(`Saved to: ${savedPath}`));
       updateMOC(config.wikiPath);
+      updateIndex(config.wikiPath);
     });
 });
 
@@ -46,25 +54,27 @@ program
   .command('rewrite')
   .argument('<file>')
   .option('--type <type>', 'Force a specific pillar type (how, what, why, fact)')
-  .action(async (file, options) => {
+  .action(async (file, cmdOptions) => {
     if (!fs.existsSync(file)) {
       console.error(chalk.red(`File not found: ${file}`));
       process.exit(1);
     }
     
+    const options = program.opts();
     const rawContent = fs.readFileSync(file, 'utf8');
     const topic = path.basename(file, '.md');
     
-    console.log(chalk.blue(`Rewriting ${file}...`));
+    console.log(chalk.blue(`Rewriting ${file} (provider: ${options.provider})...`));
     const existingFiles = getVaultFiles(config.wikiPath);
     const content = await generateNote(config, { 
       type: 'rewrite', 
       topic, 
       content: rawContent, 
-      existingFiles 
+      existingFiles,
+      providerName: options.provider
     });
     
-    let type = options.type;
+    let type = cmdOptions.type;
     if (!type) {
       const typeMatch = content.match(/type:\s*(how|what|why|fact)/i);
       type = typeMatch ? typeMatch[1].toLowerCase() : 'what';
@@ -74,6 +84,7 @@ program
     appendLog(config.wikiPath, `Rewrote ${file} as ${type} note`);
     console.log(chalk.green(`Saved to: ${savedPath}`));
     updateMOC(config.wikiPath);
+    updateIndex(config.wikiPath);
   });
 
 program.parse();

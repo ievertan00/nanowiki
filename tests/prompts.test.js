@@ -13,4 +13,8 @@ test('getSystemPrompt returns formatted prompt with type, pillars and files', ()
   assert.match(prompt, /Engineering, Life/);
   assert.match(prompt, /setup.md, intro.md/);
   assert.match(prompt, /## Prerequisites/);
+  assert.match(prompt, /pillar: \(one of the above\)/);
+  assert.match(prompt, /status: seed/);
+  assert.match(prompt, /confidence: \(0.0 to 1.0\)/);
+  assert.match(prompt, /TL;DR Block/);
 });

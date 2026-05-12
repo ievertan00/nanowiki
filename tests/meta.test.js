@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { updateMOC } from '../src/meta.js';
+import { updateMOC, updateIndex } from '../src/meta.js';
 
 describe('meta management', () => {
   let tempDir;
@@ -14,6 +14,30 @@ describe('meta management', () => {
 
   afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  test('updateIndex creates index.md with alphabetical links', () => {
+    // Setup directory structure
+    const dirs = ['how', 'what', 'why', 'fact'];
+    dirs.forEach(dir => fs.mkdirSync(path.join(tempDir, dir), { recursive: true }));
+
+    // Create some files (unordered)
+    fs.writeFileSync(path.join(tempDir, 'what', 'javascript.md'), '# JavaScript');
+    fs.writeFileSync(path.join(tempDir, 'how', 'installing-node.md'), '# Installing Node');
+    fs.writeFileSync(path.join(tempDir, 'fact', 'v8-version.md'), '# V8 Version');
+
+    updateIndex(tempDir);
+
+    const indexPath = path.join(tempDir, 'meta', 'index.md');
+    assert.strictEqual(fs.existsSync(indexPath), true);
+
+    const content = fs.readFileSync(indexPath, 'utf8');
+    assert.ok(content.includes('# Alphabetical Index'));
+    
+    const lines = content.split('\n').filter(l => l.startsWith('- '));
+    assert.strictEqual(lines[0].includes('[[installing-node]]'), true);
+    assert.strictEqual(lines[1].includes('[[javascript]]'), true);
+    assert.strictEqual(lines[2].includes('[[v8-version]]'), true);
   });
 
   test('updateMOC creates MOC.md with categorized links', () => {
