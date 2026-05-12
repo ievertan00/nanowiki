@@ -26,3 +26,9 @@ export function getVaultFiles(wikiPath) {
   }
   return [...new Set(files)];
 }
+
+export function appendLog(wikiPath, message) {
+  const logPath = path.join(wikiPath, 'meta', 'log.md');
+  const entry = `[${new Date().toISOString()}] ${message}\n`;
+  fs.appendFileSync(logPath, entry);
+}

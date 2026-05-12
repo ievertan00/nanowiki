@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { initVault, getVaultFiles } from '../src/vault.js';
+import { initVault, getVaultFiles, appendLog } from '../src/vault.js';
 
 describe('vault management', () => {
   let tempDir;
@@ -41,5 +41,31 @@ describe('vault management', () => {
     assert.ok(files.includes('test1'));
     assert.ok(files.includes('test2'));
     assert.ok(!files.includes('test3'));
+  });
+
+  test('appendLog creates meta/log.md if missing and appends message', () => {
+    initVault(tempDir);
+    const message = 'Test log entry';
+    appendLog(tempDir, message);
+    
+    const logPath = path.join(tempDir, 'meta', 'log.md');
+    assert.strictEqual(fs.existsSync(logPath), true);
+    
+    const content = fs.readFileSync(logPath, 'utf8');
+    assert.ok(content.includes(message));
+    assert.ok(content.startsWith('['));
+    assert.ok(content.endsWith('\n'));
+  });
+
+  test('appendLog appends to existing log file', () => {
+    initVault(tempDir);
+    const logPath = path.join(tempDir, 'meta', 'log.md');
+    fs.writeFileSync(logPath, 'Initial line\n');
+    
+    appendLog(tempDir, 'Second line');
+    
+    const content = fs.readFileSync(logPath, 'utf8');
+    assert.ok(content.startsWith('Initial line\n'));
+    assert.ok(content.includes('Second line'));
   });
 });
