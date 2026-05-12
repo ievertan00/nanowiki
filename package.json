@@ -1,0 +1,20 @@
+{
+  "name": "personal-wiki-cli",
+  "version": "1.0.0",
+  "description": "Personal Wiki CLI inspired by Karpathy",
+  "main": "bin/wiki.js",
+  "bin": {
+    "wiki": "bin/wiki.js"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "openai": "^4.44.0",
+    "yaml": "^2.4.2",
+    "chalk": "^5.3.0",
+    "dotenv": "^16.4.5"
+  }
+}
