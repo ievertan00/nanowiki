@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, saveTaxonomy } from '../src/config.js';
 import { initVault, getVaultFiles, appendLog } from '../src/vault.js';
 import { generateNote } from '../src/llm.js';
 import { saveNote } from '../src/note.js';
@@ -24,65 +24,71 @@ program
   .name('wiki')
   .description('Personal Wiki CLI')
   .version('1.0.0')
-  .option('--provider <name>', 'LLM provider', 'default');
+  .option('--provider <name>', 'LLM provider', 'gemini');
 
-const COMMANDS = ['how', 'what', 'why', 'fact'];
+function extractFrontmatter(content) {
+  const domain = content.match(/^domain:\s*(.+)$/m)?.[1]?.trim();
+  const topic = content.match(/^topic:\s*(.+)$/m)?.[1]?.trim();
+  const title = content.match(/^title:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '');
+  return { domain, topic, title };
+}
 
-COMMANDS.forEach(type => {
-  program
-    .command(type)
-    .argument('<topic>')
-    .action(async (topic) => {
-      const options = program.opts();
-      console.log(chalk.blue(`Generating ${type} note for: ${topic} (provider: ${options.provider})...`));
-      const existingFiles = getVaultFiles(config.wikiPath);
-      const content = await generateNote(config, { 
-        type, 
-        topic, 
-        existingFiles, 
-        providerName: options.provider 
-      });
-      const savedPath = saveNote(config.wikiPath, { type, title: topic, content });
-      appendLog(config.wikiPath, `Created ${type} note: ${topic}`);
-      console.log(chalk.green(`Saved to: ${savedPath}`));
-      updateMOC(config.wikiPath);
-      updateIndex(config.wikiPath);
+program
+  .command('ask')
+  .argument('<question>')
+  .option('--type <type>', 'Force note type (atomic, literature, fleeting)')
+  .action(async (question, cmdOptions) => {
+    const options = program.opts();
+    console.log(chalk.blue(`Generating note... (provider: ${options.provider})`));
+
+    const existingFiles = getVaultFiles(config.wikiPath);
+    const content = await generateNote(config, {
+      question,
+      existingFiles,
+      providerName: options.provider,
+      forcedType: cmdOptions.type || null
     });
-});
+
+    const { domain, topic, title } = extractFrontmatter(content);
+    const noteTitle = title || question.slice(0, 60);
+
+    const savedPath = saveNote(config.wikiPath, { title: noteTitle, content });
+    saveTaxonomy(config.wikiPath, config, domain, topic);
+    appendLog(config.wikiPath, `Created: ${noteTitle}`);
+    console.log(chalk.green(`Saved: ${savedPath}`));
+    updateMOC(config.wikiPath);
+    updateIndex(config.wikiPath);
+  });
 
 program
   .command('rewrite')
   .argument('<file>')
-  .option('--type <type>', 'Force a specific pillar type (how, what, why, fact)')
+  .option('--type <type>', 'Force note type (atomic, literature, fleeting)')
   .action(async (file, cmdOptions) => {
     if (!fs.existsSync(file)) {
       console.error(chalk.red(`File not found: ${file}`));
       process.exit(1);
     }
-    
+
     const options = program.opts();
     const rawContent = fs.readFileSync(file, 'utf8');
-    const topic = path.basename(file, '.md');
-    
-    console.log(chalk.blue(`Rewriting ${file} (provider: ${options.provider})...`));
+
+    console.log(chalk.blue(`Rewriting ${file}... (provider: ${options.provider})`));
     const existingFiles = getVaultFiles(config.wikiPath);
-    const content = await generateNote(config, { 
-      type: 'rewrite', 
-      topic, 
-      content: rawContent, 
+    const content = await generateNote(config, {
+      content: rawContent,
       existingFiles,
-      providerName: options.provider
+      providerName: options.provider,
+      forcedType: cmdOptions.type || null
     });
-    
-    let type = cmdOptions.type;
-    if (!type) {
-      const typeMatch = content.match(/type:\s*(how|what|why|fact)/i);
-      type = typeMatch ? typeMatch[1].toLowerCase() : 'what';
-    }
-    
-    const savedPath = saveNote(config.wikiPath, { type, title: topic, content });
-    appendLog(config.wikiPath, `Rewrote ${file} as ${type} note`);
-    console.log(chalk.green(`Saved to: ${savedPath}`));
+
+    const { domain, topic, title } = extractFrontmatter(content);
+    const noteTitle = title || path.basename(file, '.md');
+
+    const savedPath = saveNote(config.wikiPath, { title: noteTitle, content });
+    saveTaxonomy(config.wikiPath, config, domain, topic);
+    appendLog(config.wikiPath, `Rewrote: ${noteTitle}`);
+    console.log(chalk.green(`Saved: ${savedPath}`));
     updateMOC(config.wikiPath);
     updateIndex(config.wikiPath);
   });

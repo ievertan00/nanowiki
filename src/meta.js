@@ -1,68 +1,66 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+function parseFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return {};
+  const result = {};
+  for (const line of match[1].split('\n')) {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+    if (value) result[key] = value;
+  }
+  return result;
+}
+
 export function updateMOC(wikiPath) {
-  const sections = {
-    'how': 'How-to',
-    'what': 'Concepts',
-    'why': 'Mechanisms',
-    'fact': 'Facts'
-  };
+  const notesDir = path.join(wikiPath, 'notes');
+  if (!fs.existsSync(notesDir)) return;
 
-  let mocContent = '# Table of Contents\n\n';
+  const files = fs.readdirSync(notesDir).filter(f => f.endsWith('.md'));
 
-  for (const [dir, label] of Object.entries(sections)) {
-    const dirPath = path.join(wikiPath, dir);
-    if (fs.existsSync(dirPath)) {
-      const files = fs.readdirSync(dirPath)
-        .filter(f => f.endsWith('.md'))
-        .sort();
-      
-      if (files.length > 0) {
-        mocContent += `## ${label}\n`;
-        files.forEach(f => {
-          const title = path.basename(f, '.md');
-          mocContent += `- [[${title}]]\n`;
-        });
-        mocContent += '\n';
-      }
+  const byDomain = {};
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(notesDir, file), 'utf8');
+    const fm = parseFrontmatter(content);
+    const domain = fm.domain || 'uncategorized';
+    const topic = fm.topic || '';
+    const title = fm.title || path.basename(file, '.md');
+
+    if (!byDomain[domain]) byDomain[domain] = {};
+    if (!byDomain[domain][topic]) byDomain[domain][topic] = [];
+    byDomain[domain][topic].push(title);
+  }
+
+  const mocDir = path.join(wikiPath, 'moc');
+  if (!fs.existsSync(mocDir)) fs.mkdirSync(mocDir, { recursive: true });
+
+  for (const [domain, topics] of Object.entries(byDomain)) {
+    let mocContent = `# ${domain.charAt(0).toUpperCase() + domain.slice(1)}\n\n`;
+    for (const [topic, notes] of Object.entries(topics)) {
+      if (topic) mocContent += `## ${topic}\n`;
+      notes.sort().forEach(n => { mocContent += `- [[${n}]]\n`; });
+      mocContent += '\n';
     }
+    fs.writeFileSync(path.join(mocDir, `${domain}.md`), mocContent);
   }
-
-  const metaDir = path.join(wikiPath, 'meta');
-  if (!fs.existsSync(metaDir)) {
-    fs.mkdirSync(metaDir, { recursive: true });
-  }
-  fs.writeFileSync(path.join(metaDir, 'MOC.md'), mocContent);
 }
 
 export function updateIndex(wikiPath) {
-  const types = ['how', 'what', 'why', 'fact'];
-  let allFiles = [];
+  const notesDir = path.join(wikiPath, 'notes');
+  if (!fs.existsSync(notesDir)) return;
 
-  types.forEach(type => {
-    const dirPath = path.join(wikiPath, type);
-    if (fs.existsSync(dirPath)) {
-      const files = fs.readdirSync(dirPath)
-        .filter(f => f.endsWith('.md'))
-        .map(f => ({
-          title: path.basename(f, '.md'),
-          type: type
-        }));
-      allFiles = allFiles.concat(files);
-    }
-  });
+  const files = fs.readdirSync(notesDir)
+    .filter(f => f.endsWith('.md'))
+    .map(f => path.basename(f, '.md'))
+    .sort();
 
-  allFiles.sort((a, b) => a.title.localeCompare(b.title));
-
-  let indexContent = '# Alphabetical Index\n\n';
-  allFiles.forEach(file => {
-    indexContent += `- [[${file.title}]] (${file.type})\n`;
-  });
+  let indexContent = '# Index\n\n';
+  files.forEach(f => { indexContent += `- [[${f}]]\n`; });
 
   const metaDir = path.join(wikiPath, 'meta');
-  if (!fs.existsSync(metaDir)) {
-    fs.mkdirSync(metaDir, { recursive: true });
-  }
+  if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir, { recursive: true });
   fs.writeFileSync(path.join(metaDir, 'index.md'), indexContent);
 }

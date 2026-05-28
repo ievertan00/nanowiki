@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const DIRS = ['how', 'what', 'why', 'fact', 'meta'];
+const DIRS = ['notes', 'moc', 'meta'];
 
 export function initVault(wikiPath) {
   for (const dir of DIRS) {
@@ -13,18 +13,11 @@ export function initVault(wikiPath) {
 }
 
 export function getVaultFiles(wikiPath) {
-  const files = [];
-  for (const dir of DIRS) {
-    if (dir === 'meta') continue;
-    const dirPath = path.join(wikiPath, dir);
-    if (fs.existsSync(dirPath)) {
-      const folderFiles = fs.readdirSync(dirPath)
-        .filter(f => f.endsWith('.md'))
-        .map(f => path.basename(f, '.md'));
-      files.push(...folderFiles);
-    }
-  }
-  return [...new Set(files)];
+  const notesDir = path.join(wikiPath, 'notes');
+  if (!fs.existsSync(notesDir)) return [];
+  return fs.readdirSync(notesDir)
+    .filter(f => f.endsWith('.md'))
+    .map(f => path.basename(f, '.md'));
 }
 
 export function appendLog(wikiPath, message) {
