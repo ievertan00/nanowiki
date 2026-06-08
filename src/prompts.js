@@ -83,7 +83,7 @@ FRONTMATTER FIELDS:
 - ${sourceInstruction}
 - domain: (see taxonomy below)
 - topic: (see taxonomy below)
-- tags: inline list, e.g. tags: [keyword1, keyword2, keyword3]
+- tags: inline list of 3–6 tags. Each tag MUST be a single token with NO spaces (Obsidian rejects spaces in tags). Join multi-word concepts with hyphens in kebab-case and keep technical terms recognizable, e.g. tags: [prompt-caching, kv-cache, llm-inference, cost-optimization]. Do not wrap tags in quotes.
 - created: ${today}
 - updated: ${today}
 
