@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const DIRS = ['notes', 'moc', 'meta'];
+const DIRS = ['sources', 'notes', 'moc', 'meta'];
 
 export function initVault(wikiPath) {
   for (const dir of DIRS) {
@@ -20,8 +20,9 @@ export function getVaultFiles(wikiPath) {
     .map(f => path.basename(f, '.md'));
 }
 
-export function appendLog(wikiPath, message) {
+export function appendLog(wikiPath, operation, title) {
   const logPath = path.join(wikiPath, 'meta', 'log.md');
-  const entry = `[${new Date().toISOString()}] ${message}\n`;
+  const date = new Date().toISOString().slice(0, 10);
+  const entry = `## [${date}] ${operation} | ${title}\n\n`;
   fs.appendFileSync(logPath, entry);
 }

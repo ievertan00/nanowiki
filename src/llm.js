@@ -1,24 +1,16 @@
 import OpenAI from 'openai';
 import { getContentPrompt, getFormatPrompt } from './prompts.js';
-import { createDirectFetch } from './direct-fetch.js';
+import { getProvider } from './provider.js';
 
 export async function generateNote(config, { question, content: rawContent, existingFiles, providerName = 'default', forcedType = null }, OpenAIClient = OpenAI) {
-  const provider = config.providers[providerName] || config.providers.default || Object.values(config.providers)[0];
-  if (!provider) {
-    throw new Error(`Provider configuration for '${providerName}' not found and no other providers are available.`);
-  }
+  const { client, model } = getProvider(config, providerName, OpenAIClient);
+  const lang = config.language || 'zh';
 
-  const clientOptions = { apiKey: provider.apiKey, baseURL: provider.baseURL };
-  if (provider.directConnection) {
-    clientOptions.fetch = createDirectFetch(provider.localAddress);
-  }
-  const client = new OpenAIClient(clientOptions);
-  const model = provider.model || 'gpt-4o';
-
+  let layer1Content = null;
   let contentResult = rawContent;
 
   if (!rawContent) {
-    const { system, user } = getContentPrompt(question);
+    const { system, user } = getContentPrompt(question, lang);
     const layer1 = await client.chat.completions.create({
       model,
       messages: [
@@ -26,10 +18,11 @@ export async function generateNote(config, { question, content: rawContent, exis
         { role: 'user', content: user }
       ]
     });
-    contentResult = layer1.choices[0].message.content;
+    layer1Content = layer1.choices[0].message.content;
+    contentResult = layer1Content;
   }
 
-  const { system, user } = getFormatPrompt(contentResult, config.domains, existingFiles, forcedType);
+  const { system, user } = getFormatPrompt(contentResult, config.domains, existingFiles, forcedType, null, lang);
   const layer2 = await client.chat.completions.create({
     model,
     messages: [
@@ -38,5 +31,5 @@ export async function generateNote(config, { question, content: rawContent, exis
     ]
   });
 
-  return layer2.choices[0].message.content;
+  return { note: layer2.choices[0].message.content, source: layer1Content };
 }

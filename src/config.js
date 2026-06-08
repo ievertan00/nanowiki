@@ -1,6 +1,12 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Load .env from the repo root (one level up from src/), not the cwd, so the
+// `wiki` CLI works from any directory.
+const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+dotenv.config({ path: path.join(rootDir, ".env") });
 
 export function loadConfig() {
   const wikiPath = process.env.WIKI_PATH;
@@ -18,6 +24,7 @@ export function loadConfig() {
 
   return {
     wikiPath,
+    language: userConfig.language || process.env.WIKI_LANG || "zh",
     domains: userConfig.domains || {},
     providers: userConfig.providers || {
       gemini: {

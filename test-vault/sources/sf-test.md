@@ -1,0 +1,1 @@
+TCP uses a three-way handshake (SYN, SYN-ACK, ACK) to establish a connection. It guarantees ordered, reliable delivery via sequence numbers and acknowledgements. Congestion control uses slow start and AIMD. UDP, by contrast, is connectionless and unreliable.

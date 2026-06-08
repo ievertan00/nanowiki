@@ -59,7 +59,7 @@ export function createDirectFetch(localAddress) {
           method,
           headers: cleanHeaders,
           family: 4,
-          timeout: 60000,
+          timeout: 300000,
           servername: hostname,
           ...(localAddress ? { localAddress } : {})
         };
@@ -103,7 +103,7 @@ export function createDirectFetch(localAddress) {
         });
         req.on("timeout", () => {
           req.destroy();
-          reject(new Error("Request timed out (60s)"));
+          reject(new Error("Request timed out (300s)"));
         });
 
         if (body) req.write(body);
