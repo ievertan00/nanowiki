@@ -1,7 +1,9 @@
 # Wiki CLI — Handbook
 
-**A command-line tool for managing your personal wiki and knowledge vault.**
+**A versatile knowledge management system that works as both a standalone CLI and as native skills for AI coding agents like Claude and Gemini.**
 
+> Inspired by Andrej Karpathy's vision for an "llm-wiki".
+>
 > **Core philosophy:** You never (or rarely) write the wiki yourself — the LLM writes and maintains all of it. You are in charge of sourcing, exploration, and asking the right questions.
 >
 > Obsidian is the IDE. The LLM is the programmer. The wiki is the codebase.
@@ -63,12 +65,20 @@ Point Obsidian at `WIKI_PATH`. The vault is Obsidian-native — `[[links]]`, YAM
 
 The `skills/` folder contains four agent skills — `wiki-ask`, `wiki-rewrite`, `wiki-ingest`, `wiki-lint` — that mirror the CLI commands but run **inside a coding agent** (Claude Code, Gemini CLI, and similar). The agent itself does the generation, so no provider or API key is needed; the vault is the directory the agent was launched in.
 
-Install with `npm run skills:install`. It auto-detects each installed agent CLI and copies into every one's skills directory — `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI), which share the same `SKILL.md` format. A CLI is targeted only if its `~/.<cli>` home directory exists.
+**Quickest install — no clone needed.** Each skill folder is self-contained, so you can install straight from the repo with [`add-skill`](https://agentskills.io):
+
+```powershell
+npx add-skill ievertan00/wiki
+```
+
+It auto-detects your installed agents (Claude Code, Codex, Cursor, OpenCode, …) and copies the `wiki-*` skills into each one's skills directory.
+
+**From a clone**, use the bundled installer instead: `npm run skills:install`. It auto-detects each installed agent CLI and copies into every one's skills directory — `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI), which share the same `SKILL.md` format. A CLI is targeted only if its `~/.<cli>` home directory exists.
 
 - `npm run skills:install -- --link` — symlink instead of copy, so repo edits go live (Windows needs Developer Mode or an elevated shell).
 - `npm run skills:install -- --dest <dir>` — install into a single explicit directory instead of the auto-detected defaults.
 
-In the repo each `skills/<name>/` holds only its `SKILL.md`; the shared assets (`note-schema.md`, `wiki-maintain.mjs`, `WIKI.template.md`) live once in `skills/_shared/` and are fanned out into each folder at install time. `WIKI.template.md` is the same template the CLI uses to scaffold a new vault.
+In the repo each `skills/<name>/` is self-contained — its `SKILL.md` alongside the assets it uses (`note-schema.md`, `wiki-maintain.mjs`, `WIKI.template.md`). That self-containment is what lets `npx add-skill` copy each folder verbatim. `WIKI.template.md` is the same template the CLI uses to scaffold a new vault (its own copy lives at `src/WIKI.template.md`); when you change a shared asset, update every skill's copy to match.
 
 Usage mirrors the CLI:
 ```powershell

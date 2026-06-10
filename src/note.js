@@ -33,6 +33,15 @@ export function saveSource(wikiPath, { title, question, content }) {
   return fullPath;
 }
 
+export function saveFetchedSource(wikiPath, { title, url, content, sourceType = 'web' }) {
+  const filename = title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + '.md';
+  const fullPath = path.join(wikiPath, 'sources', filename);
+  const today = new Date().toISOString().slice(0, 10);
+  const header = `---\ntitle: ${title}\nurl: ${url}\ntype: ${sourceType}\nfetched: ${today}\n---\n\n`;
+  fs.writeFileSync(fullPath, header + content);
+  return fullPath;
+}
+
 export function saveNote(wikiPath, { title, content }) {
   const notesDir = path.join(wikiPath, 'notes');
   const filename = title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + '.md';

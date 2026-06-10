@@ -23,8 +23,9 @@ export function initVault(wikiPath, config = {}) {
 
   const wikiFile = path.join(wikiPath, 'WIKI.md');
   if (!fs.existsSync(wikiFile)) {
-    // Canonical template, shared with the skills (skills/_shared/WIKI.template.md).
-    const template = path.join(moduleDir, '..', 'skills', '_shared', 'WIKI.template.md');
+    // The CLI's own copy of the template; each skill folder ships its own copy too
+    // (kept in sync by hand) so they stay self-contained for `npx add-skill`.
+    const template = path.join(moduleDir, 'WIKI.template.md');
     if (fs.existsSync(template)) fs.copyFileSync(template, wikiFile);
   }
 }

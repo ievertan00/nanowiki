@@ -8,7 +8,8 @@ import { initVault, getVaultFiles, appendLog } from '../src/vault.js';
 import { generateNote } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
 import { lintWiki, consolidateDomains } from '../src/lint.js';
-import { saveNote, saveSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
+import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
+import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
 import { updateMOC, updateIndex, updateWikiDomains } from '../src/meta.js';
 
 const program = new Command();
@@ -128,21 +129,37 @@ program
   .command('ingest')
   .argument('<file...>')
   .action(async (fileParts) => {
-    const arg = fileParts.join(' ');
-    // Resolve a bare filename against the vault's sources/; fall back to the
-    // literal path the user gave (relative to cwd or absolute).
-    const inSources = path.join(config.wikiPath, 'sources', arg);
-    const file = fs.existsSync(inSources) ? inSources : arg;
-    if (!fs.existsSync(file)) {
-      console.error(chalk.red(`File not found: ${arg} (looked in ${path.join(config.wikiPath, 'sources')} and as a literal path)`));
-      process.exit(1);
+    const arg = fileParts.join(' ').trim();
+    const options = program.opts();
+
+    // A URL is fetched via a domain adapter and saved into sources/; otherwise
+    // resolve a bare filename against sources/, then the literal path (cwd/absolute).
+    let sourceContent, sourceTitle;
+    if (isUrl(arg)) {
+      console.log(chalk.blue(`Fetching ${arg}...`));
+      let fetched;
+      try {
+        fetched = await fetchUrlSource(arg);
+      } catch (e) {
+        console.error(chalk.red(e.message));
+        process.exit(1);
+      }
+      const savedSource = saveFetchedSource(config.wikiPath, fetched);
+      sourceContent = fetched.content;
+      sourceTitle = fetched.title;
+      console.log(chalk.green(`Source saved: ${savedSource}`));
+    } else {
+      const inSources = path.join(config.wikiPath, 'sources', arg);
+      const file = fs.existsSync(inSources) ? inSources : arg;
+      if (!fs.existsSync(file)) {
+        console.error(chalk.red(`File not found: ${arg} (looked in ${path.join(config.wikiPath, 'sources')} and as a literal path)`));
+        process.exit(1);
+      }
+      sourceContent = fs.readFileSync(file, 'utf8');
+      sourceTitle = path.basename(file, path.extname(file));
     }
 
-    const options = program.opts();
-    const sourceContent = fs.readFileSync(file, 'utf8');
-    const sourceTitle = path.basename(file, path.extname(file));
-
-    console.log(chalk.blue(`Ingesting ${file}... (provider: ${options.provider})`));
+    console.log(chalk.blue(`Ingesting "${sourceTitle}"... (provider: ${options.provider})`));
     const existingFiles = getVaultFiles(config.wikiPath);
 
     // Pass 1+2: extract summary and generate literature note

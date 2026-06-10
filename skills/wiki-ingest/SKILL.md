@@ -1,7 +1,7 @@
 ---
 name: wiki-ingest
-description: Ingest a source document into the Obsidian wiki — write a literature note for it and fan out updates to existing notes it touches. Extracts a summary plus targeted additions, formats the summary as a literature note, integrates each addition into an existing note (preserving Human Insight), skips targets that don't exist, and regenerates the vault's MOC/index/log. Use when the user runs /wiki-ingest or asks to "ingest this paper/article", "process this source into the wiki". The model behind this CLI is the generator — no API keys needed.
-argument-hint: "<name-in-sources | @path | path> [--lang zh|en] [--vault <path>]"
+description: Ingest a source document or URL into the Obsidian wiki — write a literature note for it and fan out updates to existing notes it touches. Accepts a local file or an http(s) URL (fetched to sources/ first; YouTube links become transcripts). Extracts a summary plus targeted additions, formats the summary as a literature note, integrates each addition into an existing note (preserving Human Insight), skips targets that don't exist, and regenerates the vault's MOC/index/log. Use when the user runs /wiki-ingest or asks to "ingest this paper/article/URL", "process this source into the wiki". The model behind this CLI is the generator — no API keys needed.
+argument-hint: "<name-in-sources | @path | path | url> [--lang zh|en] [--vault <path>]"
 ---
 
 # wiki-ingest
@@ -27,7 +27,29 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
    CLI was started (the current working directory) unless `--vault` overrides it — see
    `note-schema.md`. Parse `--lang`, `--vault`; the remainder is the file argument.
    Normalize it: strip a leading `@` (the file-reference marker CLIs like Claude Code
-   prepend) and any surrounding quotes. Then resolve it to a real file:
+   prepend) and any surrounding quotes.
+
+   **If the argument is an http(s) URL** (matches `^https?://`), fetch it instead of
+   resolving a file:
+   - Fetch the URL with your web-fetch tool and reduce it to clean markdown — the main
+     readable content only, dropping nav/ads/boilerplate. For a YouTube URL
+     (`youtube.com`/`youtu.be`/`m.youtube.com`), capture the video **transcript** rather
+     than the page chrome.
+   - Compute a slug from the page title (the same slug rule used for notes) and write the
+     markdown to `<vault>\sources\<slug>.md` with this frontmatter, then a blank line, then
+     the content:
+     ```
+     ---
+     title: <page title>
+     url: <the url>
+     type: <web | video-transcript>
+     fetched: <YYYY-MM-DD>
+     ---
+     ```
+   - Set `sourceTitle` = the page title and use the fetched markdown as the source content.
+     Skip the file-resolution rules below and continue at step 2.
+
+   **Otherwise** resolve it to a real file:
    - **Bare filename** — no `/` or `\` (e.g. `paper.md`) → `<vault>\sources\<name>`.
    - **Otherwise** — a path (e.g. from `@C:\docs\paper.md`, `@sources/paper.md`, or
      `./drafts/x.md`) → treat as a literal path (relative to cwd or absolute); if it

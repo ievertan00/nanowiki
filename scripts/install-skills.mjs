@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Install the wiki-* skills bundled in this repo into a CLI's skills directory.
-// Each installed skill folder is assembled from skills/<skill>/SKILL.md plus the
-// canonical shared assets in skills/_shared/, so the installed folder is fully
-// self-contained even though the repo stores each shared file only once.
+// Each skills/<skill>/ folder is self-contained (its SKILL.md plus the assets it
+// references — note-schema.md, wiki-maintain.mjs, WIKI.template.md), so install is
+// a verbatim folder copy. That self-containment is also what makes the repo work
+// with `npx add-skill <owner/repo>`, which copies each SKILL.md folder as-is.
 //
 //   node scripts/install-skills.mjs [--link] [--dest <dir>]
 //
@@ -21,15 +22,12 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '..');
-const sharedDir = path.join(repoRoot, 'skills', '_shared');
+const skillsDir = path.join(repoRoot, 'skills');
 
-// skill -> shared assets it needs. SKILL.md is always taken from skills/<skill>/.
-const SKILLS = {
-  'wiki-ask': ['note-schema.md', 'wiki-maintain.mjs', 'WIKI.template.md'],
-  'wiki-rewrite': ['note-schema.md', 'wiki-maintain.mjs', 'WIKI.template.md'],
-  'wiki-ingest': ['note-schema.md', 'wiki-maintain.mjs', 'WIKI.template.md'],
-  'wiki-lint': ['wiki-maintain.mjs', 'WIKI.template.md'],
-};
+// Every subdirectory of skills/ that contains a SKILL.md is an installable skill.
+const SKILLS = fs.readdirSync(skillsDir, { withFileTypes: true })
+  .filter(d => d.isDirectory() && fs.existsSync(path.join(skillsDir, d.name, 'SKILL.md')))
+  .map(d => d.name);
 
 // CLIs that consume ~/.<cli>/skills/<name>/SKILL.md. A target is used only when
 // its home directory already exists (i.e. the CLI is installed).
@@ -56,27 +54,20 @@ if (destIdx !== -1 && args[destIdx + 1]) {
 }
 
 function place(src, dest) {
-  if (!fs.existsSync(src)) throw new Error(`missing source asset: ${src}`);
   if (useLink) fs.symlinkSync(src, dest, 'file');
   else fs.copyFileSync(src, dest);
 }
 
 function installInto(destRoot) {
   let count = 0;
-  for (const [skill, shared] of Object.entries(SKILLS)) {
-    const skillMd = path.join(repoRoot, 'skills', skill, 'SKILL.md');
-    if (!fs.existsSync(skillMd)) {
-      console.error(`skip ${skill}: missing ${path.relative(repoRoot, skillMd)}`);
-      continue;
-    }
-
+  for (const skill of SKILLS) {
+    const srcDir = path.join(skillsDir, skill);
     const target = path.join(destRoot, skill);
     fs.rmSync(target, { recursive: true, force: true }); // clean install — no stale files
     fs.mkdirSync(target, { recursive: true });
 
     try {
-      place(skillMd, path.join(target, 'SKILL.md'));
-      for (const f of shared) place(path.join(sharedDir, f), path.join(target, f));
+      for (const f of fs.readdirSync(srcDir)) place(path.join(srcDir, f), path.join(target, f));
     } catch (e) {
       if (useLink && e.code === 'EPERM') {
         console.error(
