@@ -68,7 +68,7 @@ The `skills/` folder contains four agent skills — `wiki-ask`, `wiki-rewrite`, 
 **Quickest install — no clone needed.** Each skill folder is self-contained, so you can install straight from the repo with [`add-skill`](https://agentskills.io):
 
 ```powershell
-npx add-skill ievertan00/wiki
+npx add-skill ievertan00/nanowiki
 ```
 
 It auto-detects your installed agents (Claude Code, Codex, Cursor, OpenCode, …) and copies the `wiki-*` skills into each one's skills directory.
