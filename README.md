@@ -65,13 +65,13 @@ Point Obsidian at `WIKI_PATH`. The vault is Obsidian-native — `[[links]]`, YAM
 
 The `skills/` folder contains four agent skills — `wiki-ask`, `wiki-rewrite`, `wiki-ingest`, `wiki-lint` — that mirror the CLI commands but run **inside a coding agent** (Claude Code, Gemini CLI, and similar). The agent itself does the generation, so no provider or API key is needed; the vault is the directory the agent was launched in.
 
-**Quickest install — no clone needed.** Each skill folder is self-contained, so you can install straight from the repo with [`add-skill`](https://agentskills.io):
+**Quickest install — no clone needed.** Each skill folder is self-contained, so you can install straight from the repo with the [`skills`](https://agentskills.io) CLI:
 
 ```powershell
-npx add-skill ievertan00/nanowiki
+npx skills add ievertan00/nanowiki
 ```
 
-It auto-detects your installed agents (Claude Code, Codex, Cursor, OpenCode, …) and copies the `wiki-*` skills into each one's skills directory.
+It auto-detects your installed agents (Claude Code, Codex, Cursor, OpenCode, …) and copies the `wiki-*` skills into each one's skills directory. (The older `npx add-skill` shim is deprecated and fails to forward on Windows — use `npx skills add`.)
 
 **From a clone**, use the bundled installer instead: `npm run skills:install`. It auto-detects each installed agent CLI and copies into every one's skills directory — `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI), which share the same `SKILL.md` format. A CLI is targeted only if its `~/.<cli>` home directory exists.
 
