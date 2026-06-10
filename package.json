@@ -8,7 +8,8 @@
   },
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "skills:install": "node scripts/install-skills.mjs"
   },
   "dependencies": {
     "chalk": "^5.3.0",

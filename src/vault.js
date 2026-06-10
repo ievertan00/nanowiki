@@ -23,7 +23,8 @@ export function initVault(wikiPath, config = {}) {
 
   const wikiFile = path.join(wikiPath, 'WIKI.md');
   if (!fs.existsSync(wikiFile)) {
-    const template = path.join(moduleDir, 'WIKI.template.md');
+    // Canonical template, shared with the skills (skills/_shared/WIKI.template.md).
+    const template = path.join(moduleDir, '..', 'skills', '_shared', 'WIKI.template.md');
     if (fs.existsSync(template)) fs.copyFileSync(template, wikiFile);
   }
 }

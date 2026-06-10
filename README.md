@@ -27,8 +27,11 @@ You drop sources and ask questions. The LLM reads, writes, links, and maintains.
 git clone <repository-url>
 cd wiki
 npm install
-npm link
+npm link                 # the `wiki` CLI
+npm run skills:install   # the companion agent skills (Claude Code / Gemini CLI / …)
 ```
+
+This single repo ships **two front ends**: the `wiki` CLI (calls an external LLM provider) and a set of agent **skills** that re-implement the same four commands natively — the host coding agent is the generator, so they need no API key. `npm run skills:install` copies `skills/wiki-*` into `~/.claude/skills/`. Use a different target with `-- --dest <dir>`, or symlink for development with `-- --link`. See [Skills](#skills) below.
 
 **2. Configure environment**
 ```powershell
@@ -51,6 +54,26 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
 **3. Open vault in Obsidian**
 
 Point Obsidian at `WIKI_PATH`. The vault is Obsidian-native — `[[links]]`, YAML frontmatter, and folder structure work out of the box.
+
+---
+
+## Skills
+
+The `skills/` folder contains four agent skills — `wiki-ask`, `wiki-rewrite`, `wiki-ingest`, `wiki-lint` — that mirror the CLI commands but run **inside a coding agent** (Claude Code, Gemini CLI, and similar). The agent itself does the generation, so no provider or API key is needed; the vault is the directory the agent was launched in.
+
+Install with `npm run skills:install` (copies into `~/.claude/skills/`):
+
+- `npm run skills:install -- --link` — symlink instead of copy, so repo edits go live (Windows needs Developer Mode or an elevated shell).
+- `npm run skills:install -- --dest <dir>` — install into another tool's skills directory.
+
+In the repo each `skills/<name>/` holds only its `SKILL.md`; the shared assets (`note-schema.md`, `wiki-maintain.mjs`, `WIKI.template.md`) live once in `skills/_shared/` and are fanned out into each folder at install time. `WIKI.template.md` is the same template the CLI uses to scaffold a new vault.
+
+Usage mirrors the CLI:
+```powershell
+/wiki-ask "What is KV cache?"
+/wiki-ingest paper.md          # resolves to <vault>/sources/paper.md
+/wiki-lint
+```
 
 ---
 

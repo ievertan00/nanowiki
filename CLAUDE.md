@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```powershell
 npm install
 npm link                      # exposes `wiki` globally (bin/wiki.js)
+npm run skills:install        # installs skills/wiki-* into ~/.claude/skills (add -- --link for dev)
 
 node --test                   # run the whole suite (requires WIKI_PATH set)
 node --test tests\note.test.js   # run a single test file
@@ -47,7 +48,9 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 - _Human Insight is sacred._ Before any rewrite/update, `extractHumanInsight` pulls that section out; `restoreHumanInsight` puts the human's text back verbatim after the LLM responds. The LLM is also told never to touch it, but the code guarantees it.
 - _No dead links._ `removeDeadLinks` strips any typed `[[link]]` whose target isn't a real file in `notes/`, using a Unicode-aware `normalize` (handles CJK). `cleanContent` also strips stray ` ```markdown ` / ` ```yaml ` fences the model sometimes emits.
 
-**Vault is flat + derived** (`src/vault.js`, `src/meta.js`): notes all live directly in `notes/` — organization is frontmatter + links, never folders. On startup `initVault` (`src/vault.js`) creates the four vault dirs; on a first run it also seeds a default `wiki-config.json` (`{language, domains:{}}`) and `WIKI.md` (copied from `src/WIKI.template.md`) — idempotent, so existing files and a human's `WIKI.md` edits are never overwritten. After every mutating command, `updateMOC` regenerates `moc/<domain>.md` (grouped by topic), `updateIndex` regenerates `meta/index.md`, and `updateWikiDomains` rewrites only the `<!-- domains -->` block of `WIKI.md` — all from frontmatter. These derived files (and those generated regions) are **owned by the CLI** — don't hand-edit them; they're overwritten. `meta/log.md` is an append-only, grep-friendly operation log.
+**Vault is flat + derived** (`src/vault.js`, `src/meta.js`): notes all live directly in `notes/` — organization is frontmatter + links, never folders. On startup `initVault` (`src/vault.js`) creates the four vault dirs; on a first run it also seeds a default `wiki-config.json` (`{language, domains:{}}`) and `WIKI.md` (copied from `skills/_shared/WIKI.template.md`) — idempotent, so existing files and a human's `WIKI.md` edits are never overwritten. After every mutating command, `updateMOC` regenerates `moc/<domain>.md` (grouped by topic), `updateIndex` regenerates `meta/index.md`, and `updateWikiDomains` rewrites only the `<!-- domains -->` block of `WIKI.md` — all from frontmatter. These derived files (and those generated regions) are **owned by the CLI** — don't hand-edit them; they're overwritten. `meta/log.md` is an append-only, grep-friendly operation log.
+
+**Skills are a second front end** (`skills/`): `wiki-ask`/`wiki-rewrite`/`wiki-ingest`/`wiki-lint` are native agent-skill re-implementations of the four commands — the host LLM (Claude Code, Gemini CLI, …) is the generator, so they need no provider/API key. Each `skills/<skill>/` holds only its `SKILL.md`; the shared assets (`note-schema.md`, `wiki-maintain.mjs`, `WIKI.template.md`) live once in `skills/_shared/`. `scripts/install-skills.mjs` (`npm run skills:install`) assembles each into a self-contained folder under `~/.claude/skills/`. `WIKI.template.md` is canonical here and used by **both** fronts (the CLI's `initVault` reads `skills/_shared/WIKI.template.md`); `wiki-maintain.mjs` is the skills' standalone port of `meta.js` (MOC/index/taxonomy/log regen). Keep the skills' schema in sync with `src/prompts.js` if you change the note shape.
 
 ## Conventions and gotchas
 
