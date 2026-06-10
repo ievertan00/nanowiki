@@ -7,16 +7,16 @@ import { loadConfig, saveTaxonomy } from '../src/config.js';
 import { initVault, getVaultFiles, appendLog } from '../src/vault.js';
 import { generateNote } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
-import { lintWiki } from '../src/lint.js';
+import { lintWiki, consolidateDomains } from '../src/lint.js';
 import { saveNote, saveSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
-import { updateMOC, updateIndex } from '../src/meta.js';
+import { updateMOC, updateIndex, updateWikiDomains } from '../src/meta.js';
 
 const program = new Command();
 let config;
 
 try {
   config = loadConfig();
-  initVault(config.wikiPath);
+  initVault(config.wikiPath, config);
 } catch (e) {
   console.error(chalk.red(e.message));
   process.exit(1);
@@ -75,6 +75,7 @@ program
     console.log(chalk.green(`Saved: ${savedPath}`));
     updateMOC(config.wikiPath);
     updateIndex(config.wikiPath);
+    updateWikiDomains(config.wikiPath);
   });
 
 // ── rewrite ───────────────────────────────────────────────────────────────────
@@ -114,6 +115,7 @@ program
     console.log(chalk.green(`Saved: ${savedPath}`));
     updateMOC(config.wikiPath);
     updateIndex(config.wikiPath);
+    updateWikiDomains(config.wikiPath);
   });
 
 // ── ingest ────────────────────────────────────────────────────────────────────
@@ -122,9 +124,13 @@ program
   .command('ingest')
   .argument('<file...>')
   .action(async (fileParts) => {
-    const file = fileParts.join(' ');
+    const arg = fileParts.join(' ');
+    // Resolve a bare filename against the vault's sources/; fall back to the
+    // literal path the user gave (relative to cwd or absolute).
+    const inSources = path.join(config.wikiPath, 'sources', arg);
+    const file = fs.existsSync(inSources) ? inSources : arg;
     if (!fs.existsSync(file)) {
-      console.error(chalk.red(`File not found: ${file}`));
+      console.error(chalk.red(`File not found: ${arg} (looked in ${path.join(config.wikiPath, 'sources')} and as a literal path)`));
       process.exit(1);
     }
 
@@ -176,6 +182,7 @@ program
     console.log(chalk.green(`\nDone. 1 literature note + ${updatedCount} updated.`));
     updateMOC(config.wikiPath);
     updateIndex(config.wikiPath);
+    updateWikiDomains(config.wikiPath);
   });
 
 // ── lint ──────────────────────────────────────────────────────────────────────
@@ -186,7 +193,14 @@ program
     const options = program.opts();
     console.log(chalk.blue(`Linting wiki... (provider: ${options.provider})`));
 
-    const report = await lintWiki(config, { providerName: options.provider });
+    // Combine similar domains first, then regenerate derived files so the report
+    // reflects the consolidated taxonomy.
+    const consolidation = await consolidateDomains(config, { providerName: options.provider });
+    updateMOC(config.wikiPath);
+    updateIndex(config.wikiPath);
+    updateWikiDomains(config.wikiPath);
+
+    const report = `${consolidation}\n${await lintWiki(config, { providerName: options.provider })}`;
 
     // Save report to meta/
     const date = new Date().toISOString().slice(0, 10);

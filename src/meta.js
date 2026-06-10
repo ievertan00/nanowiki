@@ -52,6 +52,34 @@ export function updateMOC(wikiPath) {
   }
 }
 
+export function updateWikiDomains(wikiPath) {
+  const wikiFile = path.join(wikiPath, 'WIKI.md');
+  // Only maintain the section if WIKI.md already exists — never fabricate the doc.
+  if (!fs.existsSync(wikiFile)) return;
+
+  const notesDir = path.join(wikiPath, 'notes');
+  const domains = new Set();
+  if (fs.existsSync(notesDir)) {
+    for (const file of fs.readdirSync(notesDir).filter(f => f.endsWith('.md'))) {
+      const fm = parseFrontmatter(fs.readFileSync(path.join(notesDir, file), 'utf8'));
+      if (fm.domain) domains.add(fm.domain);
+    }
+  }
+
+  const sorted = [...domains].sort((a, b) => a.localeCompare(b));
+  const list = sorted.length
+    ? sorted.map(d => `- [[${d}]]`).join('\n')
+    : '_No domains yet._';
+  const block = `<!-- domains:start (auto-generated — do not edit) -->\n${list}\n<!-- domains:end -->`;
+
+  let content = fs.readFileSync(wikiFile, 'utf8');
+  const markerRe = /<!-- domains:start[\s\S]*?<!-- domains:end -->/;
+  content = markerRe.test(content)
+    ? content.replace(markerRe, block)
+    : `${content.trimEnd()}\n\n---\n\n## Domains\n\n${block}\n`;
+  fs.writeFileSync(wikiFile, content);
+}
+
 export function updateIndex(wikiPath) {
   const notesDir = path.join(wikiPath, 'notes');
   if (!fs.existsSync(notesDir)) return;

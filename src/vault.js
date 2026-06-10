@@ -1,14 +1,30 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DIRS = ['sources', 'notes', 'moc', 'meta'];
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
-export function initVault(wikiPath) {
+export function initVault(wikiPath, config = {}) {
   for (const dir of DIRS) {
     const fullPath = path.join(wikiPath, dir);
     if (!fs.existsSync(fullPath)) {
       fs.mkdirSync(fullPath, { recursive: true });
     }
+  }
+
+  // Seed config + schema doc on first use. Idempotent — existing files are never
+  // overwritten, so the human's edits and the live taxonomy are preserved.
+  const configPath = path.join(wikiPath, 'wiki-config.json');
+  if (!fs.existsSync(configPath)) {
+    const defaults = { language: config.language || 'zh', domains: {} };
+    fs.writeFileSync(configPath, JSON.stringify(defaults, null, 2));
+  }
+
+  const wikiFile = path.join(wikiPath, 'WIKI.md');
+  if (!fs.existsSync(wikiFile)) {
+    const template = path.join(moduleDir, 'WIKI.template.md');
+    if (fs.existsSync(template)) fs.copyFileSync(template, wikiFile);
   }
 }
 

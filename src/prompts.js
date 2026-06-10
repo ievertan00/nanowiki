@@ -189,3 +189,20 @@ Important concepts mentioned across multiple notes that deserve their own page.
 Prioritized list of the most valuable improvements to make.`
   };
 }
+
+export function getDomainMergePrompt(domains) {
+  return {
+    system: 'You consolidate the domain taxonomy of a personal wiki. You find groups of domain names that denote the SAME top-level field and should be merged into one. Be conservative: merge only genuine duplicates or trivial variants — different spelling, punctuation, casing, a synonym, a translation, or one name being a quoted/whitespace-corrupted form of another. Never merge domains that represent genuinely different fields, even when closely related (e.g. keep "人工智能" separate from "人工智能教育" and "人工智能交互").',
+    user: `Current domains in the wiki:
+
+${domains.map(d => `- ${d}`).join('\n')}
+
+Return ONLY a JSON object, no prose, of the form:
+{"groups": [{"canonical": "<a name from the list>", "variants": ["<another name from the list>"]}]}
+
+Rules:
+- "canonical" and every "variant" MUST be copied verbatim from the list above — never invent a new name.
+- Include a group only when two or more listed names denote the same field.
+- Omit any domain that has no duplicate. If nothing should merge, return {"groups": []}.`
+  };
+}

@@ -27,7 +27,7 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 
 ## Architecture
 
-**Config resolution** (`src/config.js`): merges `.env` with an optional `wiki-config.json` _inside the vault_ (not the repo). The vault's JSON owns the live `domains` taxonomy and can override `providers`. Provider secrets come from `.env`; taxonomy is written back to the vault's JSON by `saveTaxonomy` whenever the LLM coins a new domain/topic.
+**Config resolution** (`src/config.js`): merges `.env` with a `wiki-config.json` _inside the vault_ (not the repo; auto-seeded by `initVault` on first run, see below). The vault's JSON owns the live `domains` taxonomy and can override `providers`. Provider secrets come from `.env`; taxonomy is written back to the vault's JSON by `saveTaxonomy` whenever the LLM coins a new domain/topic.
 
 **Output language** (`config.language`): resolves from `wiki-config.json` `language` → `WIKI_LANG` → default `zh` (Simplified Chinese); the global `--lang <zh|en>` flag overrides per command (applied via a `preAction` hook in `bin/wiki.js`). The language is threaded into every prompt builder in `src/prompts.js`. Two directives exist: a one-liner for the free-form pass-1 answer, and a full `languageDirective` for schema-bearing prompts that pins the **structural tokens to English** (section headings, `extends::`-style typed-link keywords, YAML frontmatter keys) so the LLM never localizes the strings that `note.js`/`meta.js` parse by exact match. Technical terms and proper nouns (AI, LLM, Prompt, Docker, …) stay English regardless of language.
 
@@ -47,7 +47,7 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 - _Human Insight is sacred._ Before any rewrite/update, `extractHumanInsight` pulls that section out; `restoreHumanInsight` puts the human's text back verbatim after the LLM responds. The LLM is also told never to touch it, but the code guarantees it.
 - _No dead links._ `removeDeadLinks` strips any typed `[[link]]` whose target isn't a real file in `notes/`, using a Unicode-aware `normalize` (handles CJK). `cleanContent` also strips stray ` ```markdown ` / ` ```yaml ` fences the model sometimes emits.
 
-**Vault is flat + derived** (`src/vault.js`, `src/meta.js`): notes all live directly in `notes/` — organization is frontmatter + links, never folders. After every mutating command, `updateMOC` regenerates `moc/<domain>.md` (grouped by topic) and `updateIndex` regenerates `meta/index.md` from frontmatter. These files are **owned by the CLI** — don't hand-edit them; they're overwritten. `meta/log.md` is an append-only, grep-friendly operation log.
+**Vault is flat + derived** (`src/vault.js`, `src/meta.js`): notes all live directly in `notes/` — organization is frontmatter + links, never folders. On startup `initVault` (`src/vault.js`) creates the four vault dirs; on a first run it also seeds a default `wiki-config.json` (`{language, domains:{}}`) and `WIKI.md` (copied from `src/WIKI.template.md`) — idempotent, so existing files and a human's `WIKI.md` edits are never overwritten. After every mutating command, `updateMOC` regenerates `moc/<domain>.md` (grouped by topic), `updateIndex` regenerates `meta/index.md`, and `updateWikiDomains` rewrites only the `<!-- domains -->` block of `WIKI.md` — all from frontmatter. These derived files (and those generated regions) are **owned by the CLI** — don't hand-edit them; they're overwritten. `meta/log.md` is an append-only, grep-friendly operation log.
 
 ## Conventions and gotchas
 
