@@ -1,2 +1,38 @@
+# Dependencies & Packages
+# Ignoring the folder where local dependencies are installed.
 node_modules/
+
+# Local Environment & Secrets
+# Ignoring sensitive environment-specific variables and secrets.
 .env
+
+# Logs & Diagnostics
+# Ignoring log files from various tools.
+*.log
+npm-debug.log*
+yarn-debug.log
+yarn-error.log
+
+# Build & Distribution Artifacts
+# Ignoring compiled or bundled files ready for production.
+dist/
+build/
+
+# Testing
+# Ignoring temporary test data and vaults.
+test-vault/
+
+# Operating System & Cache Files
+# Ignoring metadata files created by the OS.
+.DS_Store
+Thumbs.db
+
+# IDE & Editor Configuration
+# Ignoring settings files from popular code editors and local tools.
+.vscode/
+.idea/
+.claude/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
