@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```powershell
 npm install
 npm link                      # exposes `wiki` globally (bin/wiki.js)
-npm run skills:install        # installs skills/wiki-* into ~/.claude/skills (add -- --link for dev)
+npm run skills:install        # installs skills/wiki-* into each detected CLI: ~/.claude/skills + ~/.gemini/skills (add -- --link for dev, -- --dest <dir> for one target)
 
 node --test                   # run the whole suite (requires WIKI_PATH set)
 node --test tests\note.test.js   # run a single test file
@@ -19,6 +19,7 @@ node --test tests\note.test.js   # run a single test file
 wiki ask "<question>"         # two-pass: answer, then format into a note
 wiki rewrite <file>           # reformat an existing file into the schema (single pass)
 wiki ingest <file>            # literature note + fan-out updates to existing notes
+                              #   <file>: bare name resolves against <vault>/sources/, else a literal path
 wiki lint                     # LLM health-check report into meta/lint-<date>.md
 ```
 
@@ -41,6 +42,8 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 
 `ingest` (`src/ingest.js`) is a different two-pass shape: pass 1 extracts JSON (`{summary, updates[]}`), pass 2 formats the summary as a `literature` note, then each `update` is applied to an existing note via a third prompt. Note targets that don't resolve to a file are skipped, not created.
 
+`rewrite` and `ingest` resolve their `<file>` argument the same way (`bin/wiki.js`): a bare filename is looked up under `<vault>/sources/` first, then falls back to the literal path (relative to cwd or absolute). The skills (`wiki-rewrite`/`wiki-ingest`) mirror this and additionally strip a leading `@` and surrounding quotes from the argument. Keep the two in sync if you change the rule.
+
 **The note schema lives in `src/prompts.js`, not the README.** `SKELETON` is the authoritative section list: `Source Facts`, `Synthesis`, `Connections`, `Speculation`, `Open Questions`, `Human Insight`. (The README's "Note Anatomy" section is stale and describes an older schema — trust the code.) Connections use **typed links** (`extends::`, `contradicts::`, `requires::`, `examples::`, `related::`).
 
 **Two invariants enforced in code, independent of the LLM** (`src/note.js`):
@@ -50,7 +53,7 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 
 **Vault is flat + derived** (`src/vault.js`, `src/meta.js`): notes all live directly in `notes/` — organization is frontmatter + links, never folders. On startup `initVault` (`src/vault.js`) creates the four vault dirs; on a first run it also seeds a default `wiki-config.json` (`{language, domains:{}}`) and `WIKI.md` (copied from `skills/_shared/WIKI.template.md`) — idempotent, so existing files and a human's `WIKI.md` edits are never overwritten. After every mutating command, `updateMOC` regenerates `moc/<domain>.md` (grouped by topic), `updateIndex` regenerates `meta/index.md`, and `updateWikiDomains` rewrites only the `<!-- domains -->` block of `WIKI.md` — all from frontmatter. These derived files (and those generated regions) are **owned by the CLI** — don't hand-edit them; they're overwritten. `meta/log.md` is an append-only, grep-friendly operation log.
 
-**Skills are a second front end** (`skills/`): `wiki-ask`/`wiki-rewrite`/`wiki-ingest`/`wiki-lint` are native agent-skill re-implementations of the four commands — the host LLM (Claude Code, Gemini CLI, …) is the generator, so they need no provider/API key. Each `skills/<skill>/` holds only its `SKILL.md`; the shared assets (`note-schema.md`, `wiki-maintain.mjs`, `WIKI.template.md`) live once in `skills/_shared/`. `scripts/install-skills.mjs` (`npm run skills:install`) assembles each into a self-contained folder under `~/.claude/skills/`. `WIKI.template.md` is canonical here and used by **both** fronts (the CLI's `initVault` reads `skills/_shared/WIKI.template.md`); `wiki-maintain.mjs` is the skills' standalone port of `meta.js` (MOC/index/taxonomy/log regen). Keep the skills' schema in sync with `src/prompts.js` if you change the note shape.
+**Skills are a second front end** (`skills/`): `wiki-ask`/`wiki-rewrite`/`wiki-ingest`/`wiki-lint` are native agent-skill re-implementations of the four commands — the host LLM (Claude Code, Gemini CLI, …) is the generator, so they need no provider/API key. Each `skills/<skill>/` holds only its `SKILL.md`; the shared assets (`note-schema.md`, `wiki-maintain.mjs`, `WIKI.template.md`) live once in `skills/_shared/`. `scripts/install-skills.mjs` (`npm run skills:install`) assembles each into a self-contained folder under the skills directory of every detected CLI — `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI), both of which consume the same `SKILL.md` format; a target is used only if its `~/.<cli>` home exists, and `-- --dest <dir>` overrides with a single target. `WIKI.template.md` is canonical here and used by **both** fronts (the CLI's `initVault` reads `skills/_shared/WIKI.template.md`); `wiki-maintain.mjs` is the skills' standalone port of `meta.js` (MOC/index/taxonomy/log regen). Keep the skills' schema in sync with `src/prompts.js` if you change the note shape.
 
 ## Conventions and gotchas
 

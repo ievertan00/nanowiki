@@ -1,7 +1,7 @@
 ---
 name: wiki-rewrite
 description: Reformat an existing file into the Obsidian wiki note schema (single pass). Preserves the human-authored Human Insight section verbatim, assigns domain/topic, links only to existing notes, and regenerates the vault's MOC/index/log. Use when the user runs /wiki-rewrite or asks to "reformat this note", "import this draft into the wiki", or normalize a rough/literature file into the schema. The model behind this CLI is the generator — no API keys needed.
-argument-hint: "<file> [--type atomic|literature] [--lang zh|en] [--vault <path>]"
+argument-hint: "<name-in-sources | @path | path> [--type atomic|literature] [--lang zh|en] [--vault <path>]"
 ---
 
 # wiki-rewrite
@@ -23,8 +23,17 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 
 ## Steps
 
-1. **Resolve** the vault path and output language. Parse `--type`, `--lang`, `--vault`;
-   the remainder is the input file path. Error if the file does not exist.
+1. **Resolve** the vault path and output language — see `note-schema.md`. Parse
+   `--type`, `--lang`, `--vault`; the remainder is the file argument. Normalize it:
+   strip a leading `@` (the file-reference marker CLIs like Claude Code prepend) and
+   any surrounding quotes. Then resolve it to a real file — the **same rule as
+   `wiki-ingest`**:
+   - **Bare filename** — no `/` or `\` (e.g. `rough-notes.md`) → `<vault>\sources\<name>`.
+   - **Otherwise** — a path (e.g. `@C:\drafts\x.md`, `@sources/x.md`, or `./drafts/x.md`)
+     → treat as a literal path (relative to cwd or absolute); if it doesn't exist there,
+     also try `<vault>\sources\<name>`.
+
+   Error if nothing resolves.
 
 2. **Read** the input file. If it contains a `## Human Insight` section with a non-empty
    body, capture that body now — you will restore it verbatim at the end.

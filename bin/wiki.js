@@ -85,9 +85,13 @@ program
   .argument('<file...>')
   .option('--type <type>', 'Force note type (atomic, literature)')
   .action(async (fileParts, cmdOptions) => {
-    const file = fileParts.join(' ');
+    const arg = fileParts.join(' ');
+    // Resolve a bare filename against the vault's sources/; fall back to the
+    // literal path the user gave (relative to cwd or absolute) — same as `ingest`.
+    const inSources = path.join(config.wikiPath, 'sources', arg);
+    const file = fs.existsSync(inSources) ? inSources : arg;
     if (!fs.existsSync(file)) {
-      console.error(chalk.red(`File not found: ${file}`));
+      console.error(chalk.red(`File not found: ${arg} (looked in ${path.join(config.wikiPath, 'sources')} and as a literal path)`));
       process.exit(1);
     }
 
