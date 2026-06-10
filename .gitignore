@@ -2,6 +2,10 @@
 # Ignoring the folder where local dependencies are installed.
 node_modules/
 
+# Documentation
+# Ignoring project documentation as requested.
+docs/
+
 # Local Environment & Secrets
 # Ignoring sensitive environment-specific variables and secrets.
 .env
