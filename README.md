@@ -1,101 +1,37 @@
-# Wiki CLI — Handbook
+<p align="center">
+  <img src="assets/logo.png" alt="Nanowiki logo" width="200">
+</p>
 
-**A versatile knowledge management system that works as both a standalone CLI and as native skills for AI coding agents like Claude and Gemini.**
+<h1 align="center">Nanowiki</h1>
 
-> Inspired by Andrej Karpathy's vision for an "llm-wiki".
->
-> **Core philosophy:** You never (or rarely) write the wiki yourself — the LLM writes and maintains all of it. You are in charge of sourcing, exploration, and asking the right questions.
->
-> Obsidian is the IDE. The LLM is the programmer. The wiki is the codebase.
+<p align="center">
+  <b>A lightweight, versatile personal wiki that functions both as a standalone CLI and as a native skill for AI coding agents such as Claude and Gemini.</b>
+</p>
 
 ---
+
+## Philosophy
+
+Inspired by [Andrej Karpathy's vision for an "llm-wiki"](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
+
+> You never (or rarely) write the wiki yourself — **the LLM writes and maintains all of it.** You are in charge of sourcing, exploration, and asking the right questions.
+
+- **Obsidian is the IDE.** You read, navigate, and annotate the vault there.
+- **The LLM is the programmer.** It writes every note, draws every link, and keeps the indexes fresh.
+- **The wiki is the codebase.** Plain Markdown files — local, readable, greppable, and yours forever.
 
 ## Architecture
 
-The system has three layers:
+The vault is built from four layers, each with a clear owner:
 
-```
-sources/     Raw inputs — articles, papers, files. Immutable. You own this.
-notes/       LLM-generated wiki pages. The LLM owns this.
-WIKI.md      The schema — conventions, workflows, rules. You and the LLM co-evolve this.
-```
+| Layer      | Owner       | What it holds                                                                   |
+| ---------- | ----------- | ------------------------------------------------------------------------------- |
+| `sources/` | **You**     | Raw inputs — articles, papers, transcripts, drafts. Immutable.                  |
+| `notes/`   | **The LLM** | All wiki pages, flat. Organization is frontmatter + `[[links]]`, never folders. |
+| `moc/`     | **The CLI** | Per-domain Maps of Content, auto-regenerated after every change.                |
+| `meta/`    | **The CLI** | The full note index, lint reports, and an append-only operation log.            |
 
-You drop sources and ask questions. The LLM reads, writes, links, and maintains. You read the output in Obsidian.
-
----
-
-## Setup
-
-**1. Clone and install**
-
-```powershell
-git clone <repository-url>
-cd wiki
-npm install
-npm link                 # the `wiki` CLI
-```
-
-This single repo ships **two front ends**: the `wiki` CLI (calls an external LLM provider) and a set of agent **skills** that re-implement the same four commands natively — the host coding agent is the generator, so they need no API key. `npm run skills:install` copies `skills/wiki-*` into the skills directory of every detected agent CLI — `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI). Pick a single target with `-- --dest <dir>`, or symlink for development with `-- --link`. See [Skills](#skills) below.
-
-**2. Configure environment**
-
-```powershell
-copy .env.example .env
-```
-
-Edit `.env`:
-
-```
-WIKI_PATH=C:\path\to\your\vault
-
-GEMINI_API_KEY=your-key
-GEMINI_MODEL=gemini-2.5-pro
-
-# Optional: other providers
-DEEPSEEK_API_KEY=
-QWEN_API_KEY=
-OLLAMA_BASE_URL=http://localhost:11434/v1
-```
-
-**3. Open vault in Obsidian**
-
-Point Obsidian at `WIKI_PATH`. The vault is Obsidian-native — `[[links]]`, YAML frontmatter, and folder structure work out of the box.
-
-**4. (Recommended) Back your vault with git**
-
-The LLM rewrites notes in place — `rewrite` and `ingest` both overwrite files. A git repo in the vault turns every LLM edit into a reviewable, revertible diff:
-
-```powershell
-cd $env:WIKI_PATH
-git init
-git add -A; git commit -m "vault baseline"
-```
-
-Commit whenever it suits you (after each session, or after large ingests). If an update ever goes wrong, `git diff` shows exactly what the LLM changed and `git checkout -- <file>` undoes it. The CLI never runs git itself — the history is yours.
-
----
-
-## Skills
-
-The `skills/` folder contains four agent skills — `wiki-ask`, `wiki-rewrite`, `wiki-ingest`, `wiki-lint` — that mirror the CLI commands but run **inside a coding agent** (Claude Code, Gemini CLI, and similar). The agent itself does the generation, so no provider or API key is needed; the vault is the directory the agent was launched in.
-
-**Quickest install**
-
-```powershell
-npx skills add ievertan00/nanowiki
-```
-
-Usage mirrors the CLI:
-
-```powershell
-/wiki-ask "What is KV cache?"
-/wiki-ingest paper.md          # resolves to <vault>/sources/paper.md
-/wiki-lint
-```
-
----
-
-## Vault Structure
+### Vault Structure
 
 ```
 wiki-vault/
@@ -105,162 +41,187 @@ wiki-vault/
 │   ├── ai.md
 │   └── engineering.md
 ├── meta/
-│   ├── index.md      ← full note catalog
-│   ├── log.md        ← chronological operation log
-│   ├── ingested.json ← hashes of already-ingested sources (re-ingest guard)
-│   ├── wanted-notes.md ← links the LLM wanted to notes that don't exist yet
-│   └── questions.md  ← open-questions worklist (generated by `wiki questions`)
-├── wiki-config.json  ← taxonomy + provider config
-└── WIKI.md           ← schema document
+│   ├── index.md      ← full note catalog (auto-generated)
+│   ├── lint-<date>.md ← health-check reports
+│   └── log.md        ← append-only, grep-friendly operation log
+├── wiki-config.json  ← live taxonomy (domains/topics) + overrides
+└── WIKI.md           ← the schema document, co-evolved by you and the LLM
 ```
 
-Notes are flat inside `notes/`. Organization happens through frontmatter fields and `[[links]]`, not folders.
+On first run the vault is scaffolded automatically — directories, a default `wiki-config.json`, and `WIKI.md`. Existing files are never overwritten. Point Obsidian at the vault and everything — `[[links]]`, YAML frontmatter, tags — works out of the box.
 
+### Note Structure
+
+Every note shares one schema: YAML frontmatter for organization, fixed sections for content.
+
+```markdown
 ---
+title: Scaled Dot-Product Attention
+type: atomic # or literature (for source summaries)
+source: # filename/title of the source, for literature notes
+domain: ai
+topic: transformers
+tags: [attention, transformer, llm-inference]
+created: 2026-06-11
+updated: 2026-06-11
+---
+
+## Source Facts ← only what sources directly state, as bullets
+
+## Synthesis ← cross-source interpretation (clearly LLM inference)
+
+## Connections ← typed links to existing notes only
+
+## Speculation ← unverified but interesting inferences
+
+## Open Questions ← what this note does not resolve
+
+## Human Insight ← yours alone — the LLM never touches it
+```
+
+Two invariants are enforced **in code**, independent of the LLM:
+
+- **Human Insight is sacred.** It is extracted before any rewrite/update and restored verbatim afterward.
+- **No dead links.** Connections use typed links (`extends::`, `contradicts::`, `requires::`, `examples::`, `related::`), and any link whose target isn't a real file is stripped.
 
 ## Workflows
 
-This repository offers two primary ways to interact with your wiki:
+There are four operations, available in both front ends (CLI: `wiki <cmd>`, skill: `/wiki-<cmd>`):
 
-### 1. Standalone CLI
+| Operation            | What it does                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| `ask "<question>"`   | Answer a question well, then format the answer into a new note.                        |
+| `ingest <file\|url>` | Write a literature note for a source, then fan out updates into existing notes.        |
+| `rewrite <file>`     | Reformat a draft or rough file into the note schema (Human Insight preserved).         |
+| `lint`               | Health-check the vault: consolidate domains, find contradictions, orphans, thin notes. |
 
-The `wiki` command-line tool is a traditional CLI that calls an external LLM provider (like Gemini) to generate and manage your notes. You run it directly in your terminal.
+### The multi-round `ask` loop
 
-**Example Daily Use:**
+The core daily workflow is a **conversation with your own wiki**. Each answer ends with `Open Questions` — those become your next questions, and every round deepens and links the vault:
+
+```
+1. wiki ask "What is speculative decoding?"
+        → a new note appears, linked into the existing graph
+2. Read it in Obsidian. Its Open Questions suggest what you don't know yet.
+3. wiki ask "How does the draft model in speculative decoding get chosen?"
+        → a second note, automatically linked to the first
+4. wiki ask "Does speculative decoding help with batch inference?"
+        → keep looping; the graph compounds
+5. wiki lint     ← periodically: merge duplicate domains, surface gaps
+```
+
+You never organize anything. Domains, topics, links, MOCs, and the index all maintain themselves.
+
+### Feeding it sources
 
 ```powershell
-# Ask questions to create new atomic notes
-wiki ask "What is speculative decoding?"
-wiki ask "How does LoRA fine-tuning work?"
-
-# Import a draft you wrote into the wiki format
-wiki rewrite ./sources/my-draft.md
+wiki ingest attention-paper.md                 # bare name resolves under <vault>/sources/
+wiki ingest https://example.com/great-post    # URLs are fetched into sources/ first
+wiki ingest https://youtube.com/watch?v=...   # YouTube links become transcripts
 ```
 
-### 2. Agent Skills
+A single source may update many notes: the LLM extracts a summary plus targeted additions, writes a `literature` note, and integrates each addition into the existing note it belongs to. Updates that target a note which doesn't exist are skipped — never invented.
 
-The `skills/` provide an alternative workflow where a coding agent (like Gemini CLI or Claude Code) acts as the generator. Instead of using the `wiki` CLI, you use slash commands directly within the agent's chat interface. This method does not require an external LLM API key, as it uses the agent's own capabilities.
-
-**Example Daily Use (in an Agent Chat):**
-
-```
-/wiki-ask "What is speculative decoding?"
-/wiki-ingest ./sources/some-paper.md
-```
-
-See the [Skills](#skills) section for installation and more details.
-
----
-
-## Commands
-
-The following commands are available through both the CLI (`wiki <command>`) and the Agent Skills (`/wiki-<command>`).
-
-### `wiki ask "<question>"`
-
-Ask anything. The LLM answers naturally, then formats the answer into a structured Obsidian note. This is the primary way to create new atomic notes.
-
-In a terminal, `ask` is **interactive**: the answer is shown and you can keep refining it before anything is written.
-
-```
-wiki ask "What is speculative decoding?"
-  → answer appears in the terminal
-  → Any further question? [Y/n]
-      Enter or y → type a follow-up ("Rewrite section 2 to mention KV-cache constraints…")
-                   → the answer is revised and shown again
-      n          → the final answer is formatted into a note and saved (once)
-```
-
-The refinement loop works on the free-form answer; the note schema is applied in a single formatting pass at save time. The final refined answer is also kept in `sources/`, so nothing formatting drops is lost. When stdin/stdout is not a terminal (pipes, scripts), the loop is skipped and the note is saved immediately.
-
-- **CLI Usage:**
-  ```powershell
-  wiki ask "Why does gradient vanishing happen in deep networks?"
-  ```
-- **Skill Usage:**
-  ```
-  /wiki-ask "Why does gradient vanishing happen in deep networks?"
-  ```
-
-You can switch providers (`--provider`) or force a note type (`--type atomic|literature`) with the CLI:
+### Importing your drafts
 
 ```powershell
-wiki ask "What is attention?" --provider deepseek
-wiki ask "Summary of the RLHF paper" --type literature
+wiki rewrite rough-notes.md --type literature
 ```
 
-### `wiki rewrite <file>`
+`<file>` resolves the same way for `rewrite` and `ingest`: a bare filename is looked up under `<vault>/sources/` first, then treated as a literal path.
 
-Reformat an existing file (like a draft or literature notes) into the standard wiki schema. The `## Human Insight` section is preserved verbatim.
+## CLI Installation & Configuration
 
-`<file>` resolves the same way as `ingest`: a **bare filename** is looked up under `<vault>/sources/`, while a **path** (relative or absolute) is used as-is. So `rough-notes.md` and `./sources/rough-notes.md` reach the same file.
-
-- **CLI Usage:**
-  ```powershell
-  wiki rewrite rough-notes.md --type literature
-  ```
-- **Skill Usage:**
-  ```
-  /wiki-rewrite rough-notes.md
-  ```
-
-### `wiki ingest <file>`
-
-Process a source document. The LLM reads the document, creates a new `literature` note summarizing it, and then fans out its key findings into existing related notes throughout the wiki. This is the most powerful command, as a single source may update many notes. Updates that target a note which doesn't exist are skipped (never created), and each touched note keeps its `## Human Insight` section verbatim.
-
-`<file>` resolves the same way as `rewrite`: a **bare filename** is looked up under `<vault>/sources/`, while a **path** is used as-is.
-
-A source whose content was already ingested is skipped (tracked by hash in `meta/ingested.json`) so the fan-out never duplicates additions — pass `--force` to re-ingest deliberately.
-
-- **CLI Usage:**
-  ```powershell
-  wiki ingest some-paper.md
-  ```
-- **Skill Usage:**
-  ```
-  /wiki-ingest some-paper.md
-  ```
-
-### `wiki update <note> "<new information>"`
-
-Deliberately evolve a single note: the LLM integrates the new information into the most appropriate section. `## Human Insight` is preserved verbatim, and if the rewrite drops any existing Source Facts, the CLI falls back to appending your addition verbatim instead — content is never lost.
+**1. Clone and install**
 
 ```powershell
-wiki update kv-cache "vLLM's PagedAttention allocates KV cache in fixed-size blocks"
+git clone https://github.com/ievertan00/nanowiki.git
+cd nanowiki
+npm install
+npm link            # exposes the `wiki` command globally
 ```
 
-### `wiki questions`
-
-Deterministic (no LLM call): harvests every note's `## Open Questions` section, grouped by domain, plus the wanted-notes ledger (links the LLM tried to create to notes that don't exist yet) into `meta/questions.md`. The vault generates its own next prompts — feed the worklist back into `wiki ask`.
+**2. Configure `.env`**
 
 ```powershell
-wiki questions
+copy .env.example .env
 ```
 
-### `wiki lint`
+```ini
+WIKI_PATH=C:\path\to\your\vault   # required — where the vault lives
 
-Performs a "health-check" on the entire wiki. It first consolidates duplicate/variant domains (re-tagging affected notes), then scans for contradictions between pages, orphan notes, missing cross-references, thin notes, and concepts that deserve their own page. The report is written to `meta/lint-<date>.md`. Large vaults are linted in domain-grouped shards automatically.
+# Output language for note content: zh (default, Simplified Chinese) or en.
+# Technical terms (AI, LLM, Docker, …) stay English either way.
+WIKI_LANG=zh
 
-The lint also proposes machine-applicable fixes (typed links between existing notes). They're listed in the report; `--fix` applies them in code — link targets are verified, duplicates skipped, and anything beyond a safe link addition stays a human decision.
+# Default provider when --provider is omitted (gemini, qwen, deepseek, ollama)
+WIKI_PROVIDER=gemini
 
-- **CLI Usage:**
-  ```powershell
-  wiki lint
-  wiki lint --fix
-  ```
-- **Skill Usage:**
-  ```
-  /wiki-lint
-  ```
+GEMINI_API_KEY=your-key
+GEMINI_MODEL=gemini-2.5-pro
 
----
+# Optional alternatives
+DEEPSEEK_API_KEY=
+QWEN_API_KEY=
+OLLAMA_BASE_URL=http://localhost:11434/v1
+```
 
-## Log Format
+Any OpenAI-compatible endpoint works as a provider. Per-command flags override the defaults:
 
-`meta/log.md` uses a structured prefix so it's grep-friendly:
+```powershell
+wiki ask "What is attention?" --provider deepseek --lang en
+wiki rewrite draft.md --type literature
+```
+
+**3. Open the vault in Obsidian** — point Obsidian at `WIKI_PATH` and read.
+
+The vault's `wiki-config.json` owns the live domain/topic taxonomy (the LLM grows it as it coins new domains) and can override language and provider settings per vault.
+
+## Skills
+
+The `skills/` folder ships the same four operations as **native agent skills** — `wiki-ask`, `wiki-rewrite`, `wiki-ingest`, `wiki-lint` — that run _inside_ a coding agent (Claude Code, Gemini CLI, and similar). The host agent is the generator, so **no provider or API key is needed**; the vault is the directory the agent was launched in.
+
+**Quickest install — no clone needed:**
+
+```powershell
+npx skills add ievertan00/nanowiki
+```
+
+This auto-detects your installed agents (Claude Code, Gemini CLI, Codex, Cursor, OpenCode, …) and copies the `wiki-*` skills into each one's skills directory. Each skill folder is self-contained, so it installs verbatim with no build step.
+
+**From a clone**, use the bundled installer:
+
+```powershell
+npm run skills:install              # copies into every detected agent CLI
+npm run skills:install -- --link    # symlink instead — repo edits go live (dev)
+npm run skills:install -- --dest <dir>   # install into one explicit directory
+```
+
+It targets `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI), which share the same `SKILL.md` format; a CLI is targeted only if its `~/.<cli>` home directory exists.
+
+**Usage mirrors the CLI**, as slash commands in the agent chat:
 
 ```
-## [2026-05-28] ask | KV Cache
-## [2026-05-28] rewrite | attention-mechanism
-## [2026-05-29] ingest | Attention Is All You Need
+/wiki-ask "What is KV cache?"
+/wiki-ingest paper.md
+/wiki-rewrite rough-notes.md
+/wiki-lint
 ```
+
+## Requirements
+
+- **Node.js ≥ 18** (the CLI is an ES-module project and uses the built-in test runner)
+- **An LLM API key** — only for the standalone CLI (Gemini, DeepSeek, Qwen, or a local Ollama). The agent skills need none.
+- **Obsidian** (optional but recommended) — any Markdown reader works; the vault is plain files.
+
+## About
+
+Nanowiki is a thin orchestration layer over LLM calls — most of its behavior lives in prompts, not code. It exists to make Karpathy's llm-wiki pattern practical day-to-day: one command (or slash command) per thought, and a vault that organizes itself.
+
+## License
+
+MIT
+
+## Acknowledgement
+
+- [Andrej Karpathy — _llm-wiki.md_](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), the idea file this project instantiates: raw sources + wiki pages + an index + a schema, with the LLM doing all the writing.
