@@ -38,9 +38,10 @@ export function getVaultFiles(wikiPath) {
     .map(f => path.basename(f, '.md'));
 }
 
-export function appendLog(wikiPath, operation, title) {
+export function appendLog(wikiPath, operation, title, details = []) {
   const logPath = path.join(wikiPath, 'meta', 'log.md');
   const date = new Date().toISOString().slice(0, 10);
-  const entry = `## [${date}] ${operation} | ${title}\n\n`;
+  const detailBlock = details.length ? details.map(d => `- ${d}`).join('\n') + '\n\n' : '';
+  const entry = `## [${date}] ${operation} | ${title}\n\n${detailBlock}`;
   fs.appendFileSync(logPath, entry);
 }

@@ -129,6 +129,19 @@ export function saveNote(wikiPath, { title, content, allowOverwrite = false }) {
   return { path: fullPath, renamed };
 }
 
+// Deterministically insert a line at the end of a `## <section>` block (before
+// the next `## ` heading). Returns null when the section is missing.
+export function appendToSection(content, section, line) {
+  const heading = content.match(new RegExp(`^## ${section}\\s*$`, 'm'));
+  if (!heading) return null;
+  const sectionStart = heading.index + heading[0].length;
+  const nextHeading = content.slice(sectionStart).search(/^## /m);
+  const insertAt = nextHeading === -1 ? content.length : sectionStart + nextHeading;
+  const before = content.slice(0, insertAt).replace(/\s*$/, '');
+  const after = content.slice(insertAt);
+  return `${before}\n${line}\n${after ? '\n' + after : ''}`;
+}
+
 export function extractHumanInsight(content) {
   const match = content.match(/^## Human Insight\s*\n([\s\S]*)$/m);
   if (!match) return null;

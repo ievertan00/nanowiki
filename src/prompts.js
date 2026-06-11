@@ -57,45 +57,58 @@ export function getContentPrompt(question, lang = 'zh') {
   };
 }
 
-export function getFormatPrompt(content, domains, existingFiles, forcedType = null, sourceTitle = null, lang = 'zh') {
+// Candidates are catalog entries ({slug, title, summary, …}) from retrieve.js;
+// bare strings are accepted too. Rendering the title/summary lets the model judge
+// relevance instead of guessing from a filename.
+function renderCandidates(candidates) {
+  if (!candidates || candidates.length === 0) return 'none';
+  return candidates.map(c => {
+    if (typeof c === 'string') return `- [[${c}]]`;
+    const desc = [c.title !== c.slug ? c.title : '', c.summary].filter(Boolean).join(' — ');
+    return `- [[${c.slug}]]${desc ? `: ${desc}` : ''}`;
+  }).join('\n');
+}
+
+export function getFormatPrompt(content, domains, candidates, forcedType = null, sourceTitle = null, lang = 'zh') {
   const hasDomains = Object.keys(domains).length > 0;
   const taxonomyHint = hasDomains
     ? `Known domains and topics:\n${Object.entries(domains).map(([d, ts]) => `  ${d}: ${ts.length ? ts.join(', ') : '(no topics yet)'}`).join('\n')}\nUse the closest match. If nothing fits, infer a new concise domain and topic.`
     : 'No taxonomy defined yet. Infer an appropriate domain and topic.';
   const typeInstruction = forcedType ? `type: ${forcedType}` : `type: atomic or literature`;
   const sourceInstruction = sourceTitle ? `source: ${sourceTitle}` : `source: (leave empty for atomic notes; filename or title of the source document for literature notes)`;
-  const linkList = existingFiles.length ? existingFiles.join(', ') : 'none';
+  const linkList = renderCandidates(candidates);
   const today = new Date().toISOString().slice(0, 10);
 
   return {
-    system: 'You are a knowledge architect. Format the provided content into a structured Obsidian wiki note. Output only valid Markdown. Do not add information beyond what is in the content.',
+    system: 'You are a knowledge architect. Format the provided content into a structured Obsidian wiki note. Respond only with valid JSON. Do not add information beyond what is in the content.',
     user: `Format the following content into an Obsidian wiki note.
 
 ${languageDirective(lang)}
 
-OUTPUT FORMAT:
-- Do NOT wrap the note in any code fence
-- Output YAML fields directly between the --- delimiters — no \`\`\`yaml wrapper
+OUTPUT FORMAT (strict):
+Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"], "created": "${today}", "updated": "${today}"}, "body": "## Source Facts\\n..."}
+"body" is the complete Markdown note body following the SKELETON below, starting at "## Source Facts". No YAML in the body, no code fences.
 
-FRONTMATTER FIELDS:
+FRONTMATTER VALUES:
 - title: a specific, unique noun phrase that captures the note's single core idea. It must be distinctive enough to stand alone in an index and not collide with adjacent notes. Avoid generic or one-word labels (e.g. "Gemini", "Attention", "Caching"); name the precise concept instead (e.g. "Google Gemini Multimodal Model Family", "Scaled Dot-Product Attention", "Anthropic Prompt Caching"). Use Title Case, no trailing punctuation, and prefer 3–7 words.
 - ${typeInstruction}
 - ${sourceInstruction}
 - domain: (see taxonomy below)
 - topic: (see taxonomy below)
-- tags: inline list of 3–6 tags. Each tag MUST be a single token with NO spaces (Obsidian rejects spaces in tags). Join multi-word concepts with hyphens in kebab-case and keep technical terms recognizable, e.g. tags: [prompt-caching, kv-cache, llm-inference, cost-optimization]. Do not wrap tags in quotes.
+- tags: JSON array of 3–6 tags. Each tag MUST be a single token with NO spaces (Obsidian rejects spaces in tags). Join multi-word concepts with hyphens in kebab-case and keep technical terms recognizable, e.g. ["prompt-caching", "kv-cache", "llm-inference"].
 - created: ${today}
 - updated: ${today}
 
 TAXONOMY:
 ${taxonomyHint}
 
-EXISTING NOTES:
+EXISTING NOTES (most relevant to this content; each line is "[[name]]: title — summary"):
 ${linkList}
 
 LINKS (strict):
-- In the Connections section, ONLY link to notes from the EXISTING NOTES list above
-- If the list is empty or a note is not in it, do NOT create any [[links]] — leave Connections empty
+- In the Connections section, ONLY link to notes from the EXISTING NOTES list above, copying the [[name]] exactly as listed
+- If the list is "none" or a note is not in it, do NOT create any [[links]] — leave Connections empty
 - Creating links to notes that do not exist is forbidden
 
 SKELETON (use these sections in this order):
@@ -106,19 +119,34 @@ ${content}`
   };
 }
 
-export function getExtractionPrompt(sourceContent, sourceTitle, existingNotes, lang = 'zh') {
-  const noteList = existingNotes.length ? existingNotes.join(', ') : 'none';
+// Interactive ask: revise the pass-1 free-form answer per a follow-up. No schema,
+// no frontmatter, no link rules — those belong to the format pass at save time.
+export function getRefinePrompt(answer, followUp, lang = 'zh') {
+  return {
+    system: `You are a knowledgeable assistant revising a draft answer. Apply the user's follow-up: if it is a new question, answer it and merge the result in; if it is an instruction, revise accordingly. Preserve everything the follow-up does not affect. Return the complete updated answer as plain prose/Markdown — no YAML frontmatter, no wiki-note sections.\n${contentLangLine(lang)}`,
+    user: `CURRENT ANSWER:\n${answer}\n\nFOLLOW-UP:\n${followUp}`
+  };
+}
+
+export function getExtractionPrompt(sourceContent, sourceTitle, candidates, lang = 'zh') {
+  const noteList = (candidates && candidates.length)
+    ? candidates.map(c => {
+        if (typeof c === 'string') return `- ${c}`;
+        const desc = [c.title !== c.slug ? c.title : '', c.summary].filter(Boolean).join(' — ');
+        return `- ${c.slug}${desc ? `: ${desc}` : ''}`;
+      }).join('\n')
+    : 'none';
   return {
     system: 'You are a knowledge architect. Extract structured information from a source document for ingestion into a personal wiki. Respond only with valid JSON.',
     user: `Read the following source document and extract structured information.
 
 ${languageDirective(lang)}
-(This applies to the "summary" and "addition" text. Copy each "note" title VERBATIM from the existing-notes list — never translate it.)
+(This applies to the "summary" and "addition" text. Copy each "note" name VERBATIM from the existing-notes list — never translate it.)
+
+EXISTING WIKI NOTES (most relevant to this source; each line is "name: title — summary"):
+${noteList}
 
 SOURCE TITLE: ${sourceTitle}
-
-EXISTING WIKI NOTES:
-${noteList}
 
 Return a JSON object with exactly this shape:
 {
@@ -150,6 +178,24 @@ ${addition}
 
 EXISTING NOTE:
 ${existingContent}`
+  };
+}
+
+// Repair pass: a validated note came back with schema violations; one bounded
+// corrective call with the exact violations. Fix-only — content stays untouched.
+export function getRepairPrompt(noteContent, errors, lang = 'zh') {
+  return {
+    system: 'You are fixing schema violations in an Obsidian wiki note. Fix ONLY the listed violations. Do not add, remove, reorder, or rewrite any other content. Respond only with valid JSON.',
+    user: `The following wiki note violates its schema.
+
+VIOLATIONS:
+${errors.map(e => `- ${e}`).join('\n')}
+
+Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"], "created": "YYYY-MM-DD", "updated": "YYYY-MM-DD"}, "body": "## Source Facts\\n..."}
+
+NOTE:
+${noteContent}`
   };
 }
 
@@ -186,7 +232,12 @@ Notes too sparse to be useful. Suggest what each one needs.
 Important concepts mentioned across multiple notes that deserve their own page.
 
 ## Suggested Actions
-Prioritized list of the most valuable improvements to make.`
+Prioritized list of the most valuable improvements to make.
+
+After the report, append ONE fenced \`\`\`json block of machine-applicable operations derived from your Missing Links and Contradictions findings:
+{"ops": [{"op": "add_link", "from": "<note name>", "type": "extends|contradicts|requires|examples|related", "to": "<note name>"}]}
+- "from" and "to" MUST be note names copied verbatim from the ### headers above
+- Include only links you are confident about. If none, use {"ops": []}`
   };
 }
 

@@ -4,14 +4,16 @@ import chalk from 'chalk';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import readline from 'node:readline/promises';
 import { loadConfig, saveTaxonomy } from '../src/config.js';
-import { initVault, getVaultFiles, appendLog } from '../src/vault.js';
-import { generateNote } from '../src/llm.js';
+import { initVault, appendLog } from '../src/vault.js';
+import { buildCatalog, selectCandidates } from '../src/retrieve.js';
+import { generateNote, answerQuestion, refineAnswer, formatNote } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
-import { lintWiki, consolidateDomains } from '../src/lint.js';
+import { lintWiki, consolidateDomains, applyLintOps } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
-import { updateMOC, updateIndex, updateWikiDomains } from '../src/meta.js';
+import { updateMOC, updateIndex, updateWikiDomains, updateQuestions } from '../src/meta.js';
 
 const program = new Command();
 let config;
@@ -64,14 +66,33 @@ program
   .option('--type <type>', 'Force note type (atomic, literature)')
   .action(async (question, cmdOptions) => {
     const options = program.opts();
-    console.log(chalk.blue(`Generating note... (provider: ${options.provider})`));
+    console.log(chalk.blue(`Answering... (provider: ${options.provider})`));
 
-    const existingFiles = getVaultFiles(config.wikiPath);
-    const { note, source } = await generateNote(config, {
-      question,
-      existingFiles,
-      providerName: options.provider,
-      forcedType: cmdOptions.type || null
+    // Pass 1: free-form answer. Interactive refinement loops on this raw answer;
+    // the schema-bearing format pass runs exactly once, at save time.
+    let answer = await answerQuestion(config, { question, providerName: options.provider });
+
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      while (true) {
+        console.log('\n' + answer + '\n');
+        const more = (await rl.question(chalk.cyan('Any further question? [Y/n] '))).trim();
+        if (/^n/i.test(more)) break;
+        const followUp = (await rl.question(chalk.cyan('> '))).trim();
+        if (!followUp) continue;
+        console.log(chalk.blue('Updating answer...'));
+        answer = await refineAnswer(config, { answer, followUp, providerName: options.provider });
+      }
+      rl.close();
+    }
+
+    console.log(chalk.blue('Formatting note...'));
+    const candidates = selectCandidates(buildCatalog(config.wikiPath), `${question}\n${answer}`);
+    const note = await formatNote(config, {
+      content: answer,
+      candidates,
+      forcedType: cmdOptions.type || null,
+      providerName: options.provider
     });
 
     const { domain, topic, title } = extractFrontmatter(note);
@@ -79,7 +100,9 @@ program
 
     const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: note });
     if (renamed) warnCollision(savedPath, noteTitle);
-    if (source) saveSource(config.wikiPath, { title: noteTitle, question, content: source });
+    // The final refined answer is the unformatted counterpart of the note — save
+    // it (not the pre-refinement original) so nothing the format pass drops is lost.
+    saveSource(config.wikiPath, { title: noteTitle, question, content: answer });
     saveTaxonomy(config.wikiPath, config, domain, topic);
     appendLog(config.wikiPath, 'ask', noteTitle);
     console.log(chalk.green(`Saved: ${savedPath}`));
@@ -110,10 +133,10 @@ program
     const humanInsight = extractHumanInsight(rawContent);
 
     console.log(chalk.blue(`Rewriting ${file}... (provider: ${options.provider})`));
-    const existingFiles = getVaultFiles(config.wikiPath);
+    const candidates = selectCandidates(buildCatalog(config.wikiPath), rawContent);
     const { note } = await generateNote(config, {
       content: rawContent,
-      existingFiles,
+      candidates,
       providerName: options.provider,
       forcedType: cmdOptions.type || null
     });
@@ -180,13 +203,13 @@ program
     }
 
     console.log(chalk.blue(`Ingesting "${sourceTitle}"... (provider: ${options.provider})`));
-    const existingFiles = getVaultFiles(config.wikiPath);
+    const candidates = selectCandidates(buildCatalog(config.wikiPath), sourceContent);
 
     // Pass 1+2: extract summary and generate literature note
     const { literatureNote, updates } = await ingestSource(config, {
       sourceContent,
       sourceTitle,
-      existingFiles,
+      candidates,
       providerName: options.provider
     });
 
@@ -198,46 +221,102 @@ program
     saveTaxonomy(config.wikiPath, config, domain, topic);
     console.log(chalk.green(`Literature note: ${savedPath}`));
 
-    // Update existing notes
+    // Update existing notes. Each target is independent: one failure is recorded
+    // and the fan-out continues, so a mid-run error never leaves silent gaps.
     let updatedCount = 0;
+    const outcomes = [];
     for (const { note, addition } of updates) {
       const notePath = slugToPath(config.wikiPath, note);
       if (!fs.existsSync(notePath)) {
+        outcomes.push(`skipped: ${note} (not found)`);
         console.log(chalk.yellow(`  Skipped (not found): ${note}`));
         continue;
       }
-      const existing = fs.readFileSync(notePath, 'utf8');
-      const humanInsight = extractHumanInsight(existing);
-      let updated = await updateNote(config, {
-        existingContent: existing,
-        addition,
-        sourceTitle,
-        providerName: options.provider
-      });
-      updated = restoreHumanInsight(updated, humanInsight);
-      // Through saveNote so the update gets the same cleaning, dead-link capture,
-      // and `updated:` bump as a fresh note (slugs are slugify-idempotent, so the
-      // title `note` resolves back to notePath).
-      saveNote(config.wikiPath, { title: note, content: updated, allowOverwrite: true });
-      updatedCount++;
-      console.log(chalk.green(`  Updated: ${note}`));
+      try {
+        const existing = fs.readFileSync(notePath, 'utf8');
+        const humanInsight = extractHumanInsight(existing);
+        const { content: updated, preserved } = await updateNote(config, {
+          existingContent: existing,
+          addition,
+          sourceTitle,
+          providerName: options.provider
+        });
+        // Through saveNote so the update gets the same cleaning, dead-link capture,
+        // and `updated:` bump as a fresh note (slugs are slugify-idempotent, so the
+        // title `note` resolves back to notePath).
+        saveNote(config.wikiPath, { title: note, content: restoreHumanInsight(updated, humanInsight), allowOverwrite: true });
+        updatedCount++;
+        outcomes.push(preserved ? `updated: ${note}` : `updated: ${note} (fallback append — rewrite dropped existing facts)`);
+        console.log(chalk.green(`  Updated: ${note}${preserved ? '' : ' (fallback append)'}`));
+      } catch (e) {
+        outcomes.push(`failed: ${note} (${e.message})`);
+        console.error(chalk.red(`  Failed: ${note} — ${e.message}`));
+      }
     }
 
     ledger[sourceHash] = { title: sourceTitle, date: new Date().toISOString().slice(0, 10) };
     fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
 
-    appendLog(config.wikiPath, 'ingest', sourceTitle);
+    appendLog(config.wikiPath, 'ingest', sourceTitle, outcomes);
     console.log(chalk.green(`\nDone. 1 literature note + ${updatedCount} updated.`));
     updateMOC(config.wikiPath);
     updateIndex(config.wikiPath);
     updateWikiDomains(config.wikiPath);
   });
 
+// ── update ────────────────────────────────────────────────────────────────────
+
+program
+  .command('update')
+  .argument('<note>', 'Existing note title or slug')
+  .argument('<information...>', 'New information or instruction to integrate')
+  .action(async (note, infoParts) => {
+    const addition = infoParts.join(' ');
+    const options = program.opts();
+    const notePath = slugToPath(config.wikiPath, note);
+    if (!fs.existsSync(notePath)) {
+      console.error(chalk.red(`Note not found: ${note}`));
+      process.exit(1);
+    }
+    const slug = path.basename(notePath, '.md');
+
+    console.log(chalk.blue(`Updating ${slug}... (provider: ${options.provider})`));
+    const existing = fs.readFileSync(notePath, 'utf8');
+    const humanInsight = extractHumanInsight(existing);
+    const { content, preserved } = await updateNote(config, {
+      existingContent: existing,
+      addition,
+      sourceTitle: 'user addition',
+      providerName: options.provider
+    });
+    saveNote(config.wikiPath, { title: slug, content: restoreHumanInsight(content, humanInsight), allowOverwrite: true });
+    if (!preserved) console.warn(chalk.yellow('Rewrite dropped existing facts — the addition was appended verbatim instead.'));
+
+    appendLog(config.wikiPath, 'update', slug, preserved ? [] : ['fallback append — rewrite dropped existing facts']);
+    console.log(chalk.green(`Updated: ${notePath}`));
+    updateMOC(config.wikiPath);
+    updateIndex(config.wikiPath);
+    updateWikiDomains(config.wikiPath);
+  });
+
+// ── questions ─────────────────────────────────────────────────────────────────
+
+program
+  .command('questions')
+  .description('Harvest every note\'s Open Questions and the wanted-notes ledger into meta/questions.md')
+  .action(() => {
+    const md = updateQuestions(config.wikiPath);
+    appendLog(config.wikiPath, 'questions', new Date().toISOString().slice(0, 10));
+    console.log(chalk.green(`Saved: ${path.join(config.wikiPath, 'meta', 'questions.md')}`));
+    console.log('\n' + md);
+  });
+
 // ── lint ──────────────────────────────────────────────────────────────────────
 
 program
   .command('lint')
-  .action(async () => {
+  .option('--fix', 'Apply the safe machine-applicable fixes (typed links between existing notes)')
+  .action(async (cmdOptions) => {
     const options = program.opts();
     console.log(chalk.blue(`Linting wiki... (provider: ${options.provider})`));
 
@@ -248,10 +327,19 @@ program
     updateIndex(config.wikiPath);
     updateWikiDomains(config.wikiPath);
 
-    const report = `${consolidation}\n${await lintWiki(config, { providerName: options.provider })}`;
+    const { report: lintReport, ops } = await lintWiki(config, { providerName: options.provider });
+    let report = `${consolidation}\n${lintReport}`;
+
+    const date = new Date().toISOString().slice(0, 10);
+    if (cmdOptions.fix && ops.length) {
+      const results = applyLintOps(config.wikiPath, ops);
+      report += `\n\n## Applied Fixes\n\n${results.map(r => `- ${r}`).join('\n')}\n`;
+      appendLog(config.wikiPath, 'lint-fix', date, results);
+    } else if (ops.length) {
+      report += `\n\n## Proposed Fixes (run \`wiki lint --fix\` to apply)\n\n${ops.map(o => `- ${o.op}: ${o.from} —${o.type}→ ${o.to}`).join('\n')}\n`;
+    }
 
     // Save report to meta/
-    const date = new Date().toISOString().slice(0, 10);
     const reportPath = path.join(config.wikiPath, 'meta', `lint-${date}.md`);
     fs.writeFileSync(reportPath, report);
 

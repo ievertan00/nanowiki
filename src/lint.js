@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { getLintPrompt, getDomainMergePrompt } from './prompts.js';
 import { getProvider } from './provider.js';
+import { appendToSection, saveNote } from './note.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -152,6 +153,12 @@ export async function consolidateDomains(config, { providerName = 'default' }, O
   return summary;
 }
 
+// Whole-vault lint stops scaling once the notes outgrow one context window, so
+// notes are grouped by domain (keeping related notes in the same prompt) and
+// greedy-packed into chunks under this character budget — one LLM call per chunk.
+// A vault that fits in one chunk behaves exactly as before.
+const LINT_CHUNK_CHARS = 48000;
+
 export async function lintWiki(config, { providerName = 'default' }, OpenAIClient = OpenAI) {
   const notesDir = path.join(config.wikiPath, 'notes');
   if (!fs.existsSync(notesDir)) throw new Error('No notes directory found.');
@@ -159,18 +166,105 @@ export async function lintWiki(config, { providerName = 'default' }, OpenAIClien
   const files = fs.readdirSync(notesDir).filter(f => f.endsWith('.md'));
   if (files.length === 0) throw new Error('No notes to lint.');
 
-  const notesContent = files.map(f => {
-    const title = path.basename(f, '.md');
+  // Group notes by domain so each shard lints coherent material.
+  const byDomain = new Map();
+  for (const f of files) {
     const content = fs.readFileSync(path.join(notesDir, f), 'utf8');
-    return `### ${title}\n${content}`;
-  }).join('\n\n---\n\n');
+    const slug = path.basename(f, '.md');
+    const domain = getNoteDomain(content) || 'uncategorized';
+    if (!byDomain.has(domain)) byDomain.set(domain, []);
+    byDomain.get(domain).push({ slug, text: `### ${slug}\n${content}` });
+  }
 
-  const orphans = findOrphans(config.wikiPath);
+  // Greedy-pack domains into chunks; an oversized domain spills across chunks.
+  const chunks = [];
+  let cur = { domains: new Set(), slugs: new Set(), parts: [], size: 0 };
+  const flush = () => {
+    if (cur.parts.length) chunks.push(cur);
+    cur = { domains: new Set(), slugs: new Set(), parts: [], size: 0 };
+  };
+  for (const [domain, notes] of byDomain) {
+    for (const note of notes) {
+      if (cur.size > 0 && cur.size + note.text.length > LINT_CHUNK_CHARS) flush();
+      cur.domains.add(domain);
+      cur.slugs.add(note.slug.toLowerCase());
+      cur.parts.push(note.text);
+      cur.size += note.text.length;
+    }
+  }
+  flush();
+
+  const orphans = findOrphans(config.wikiPath); // lowercased slugs
   const { client, model } = getProvider(config, providerName, OpenAIClient);
-  const { system, user } = getLintPrompt(notesContent, orphans, config.language || 'zh');
-  const result = await client.chat.completions.create({
-    model,
-    messages: [{ role: 'system', content: system }, { role: 'user', content: user }]
-  });
-  return result.choices[0].message.content;
+  const lang = config.language || 'zh';
+
+  const reports = [];
+  const allOps = [];
+  for (const chunk of chunks) {
+    const chunkOrphans = orphans.filter(o => chunk.slugs.has(o));
+    const { system, user } = getLintPrompt(chunk.parts.join('\n\n---\n\n'), chunkOrphans, lang);
+    const result = await client.chat.completions.create({
+      model,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }]
+    });
+    const { ops, cleaned } = extractLintOps(result.choices[0].message.content);
+    allOps.push(...ops);
+    reports.push(chunks.length > 1
+      ? `# Shard: ${[...chunk.domains].join(', ')}\n\n${cleaned}`
+      : cleaned);
+  }
+  return { report: reports.join('\n\n---\n\n'), ops: allOps };
+}
+
+// Pull the machine-applicable ```json {"ops": [...]} block(s) out of a lint
+// report; the prose report stays clean. Unparseable blocks are left in place.
+export function extractLintOps(text) {
+  const ops = [];
+  const cleaned = text.replace(/```json\s*([\s\S]*?)```/g, (match, body) => {
+    try {
+      const parsed = JSON.parse(body);
+      if (Array.isArray(parsed.ops)) {
+        ops.push(...parsed.ops);
+        return '';
+      }
+    } catch { /* fall through */ }
+    return match;
+  }).trim();
+  return { ops, cleaned };
+}
+
+const LINK_TYPES = new Set(['extends', 'contradicts', 'requires', 'examples', 'related']);
+
+// Apply the safe subset of lint ops in code: typed links between notes that
+// both exist. Everything else is skipped with a reason — never guessed at.
+// Same slug rule as bin/wiki.js and note.js; keep in sync.
+export function applyLintOps(wikiPath, ops) {
+  const notesDir = path.join(wikiPath, 'notes');
+  const slugify = s => String(s).replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '');
+  const results = [];
+  for (const op of ops || []) {
+    if (op.op !== 'add_link') { results.push(`skipped: unsupported op "${op.op}"`); continue; }
+    const type = String(op.type || '').trim();
+    if (!LINK_TYPES.has(type)) { results.push(`skipped: unknown link type "${op.type}"`); continue; }
+    const fromSlug = slugify(op.from);
+    const toSlug = slugify(op.to);
+    const fromPath = path.join(notesDir, `${fromSlug}.md`);
+    if (!fs.existsSync(fromPath) || !fs.existsSync(path.join(notesDir, `${toSlug}.md`))) {
+      results.push(`skipped: add_link ${op.from} -> ${op.to} (note not found)`);
+      continue;
+    }
+    const content = fs.readFileSync(fromPath, 'utf8');
+    if (content.includes(`[[${toSlug}]]`)) {
+      results.push(`skipped: ${fromSlug} already links [[${toSlug}]]`);
+      continue;
+    }
+    const updated = appendToSection(content, 'Connections', `${type}:: [[${toSlug}]]`);
+    if (!updated) {
+      results.push(`skipped: ${fromSlug} has no ## Connections section`);
+      continue;
+    }
+    saveNote(wikiPath, { title: fromSlug, content: updated, allowOverwrite: true });
+    results.push(`added: ${type}:: [[${toSlug}]] to ${fromSlug}`);
+  }
+  return results;
 }

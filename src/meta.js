@@ -80,6 +80,52 @@ export function updateWikiDomains(wikiPath) {
   fs.writeFileSync(wikiFile, content);
 }
 
+// The vault generates its own next prompts: harvest every note's
+// ## Open Questions section (grouped by domain) plus the wanted-notes ledger
+// into meta/questions.md — a worklist to feed back into `wiki ask`.
+export function updateQuestions(wikiPath) {
+  const notesDir = path.join(wikiPath, 'notes');
+  const byDomain = new Map();
+  if (fs.existsSync(notesDir)) {
+    for (const file of fs.readdirSync(notesDir).filter(f => f.endsWith('.md'))) {
+      const content = fs.readFileSync(path.join(notesDir, file), 'utf8');
+      const section = content.match(/^## Open Questions\s*\r?\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+      if (!section) continue;
+      const lines = section[1].split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l && !/^[-*]?\s*(none|无|暂无)\s*[。.!]?$/i.test(l));
+      if (!lines.length) continue;
+      const fm = parseFrontmatter(content);
+      const domain = fm.domain || 'uncategorized';
+      if (!byDomain.has(domain)) byDomain.set(domain, []);
+      byDomain.get(domain).push({ slug: path.basename(file, '.md'), lines });
+    }
+  }
+
+  let md = '# Open Questions Worklist\n\nHarvested from every note\'s `## Open Questions` section and the wanted-notes ledger. Feed these back into `wiki ask`.\n';
+  for (const [domain, notes] of [...byDomain.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    md += `\n## ${domain}\n`;
+    for (const { slug, lines } of notes) {
+      md += `\n### [[${slug}]]\n${lines.map(l => /^[-*]\s/.test(l) ? l : `- ${l}`).join('\n')}\n`;
+    }
+  }
+
+  const ledgerPath = path.join(wikiPath, 'meta', 'wanted-notes.md');
+  if (fs.existsSync(ledgerPath)) {
+    const rows = [];
+    for (const line of fs.readFileSync(ledgerPath, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\|\s*\d{4}-\d{2}-\d{2}\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|/);
+      if (m) rows.push(`- ${m[1]} (${m[2]}, wanted by [[${m[3]}]])`);
+    }
+    if (rows.length) md += `\n## Wanted Notes\n\nNotes that don't exist yet but other notes tried to link to:\n\n${rows.join('\n')}\n`;
+  }
+
+  const metaDir = path.join(wikiPath, 'meta');
+  if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir, { recursive: true });
+  fs.writeFileSync(path.join(metaDir, 'questions.md'), md);
+  return md;
+}
+
 export function updateIndex(wikiPath) {
   const notesDir = path.join(wikiPath, 'notes');
   if (!fs.existsSync(notesDir)) return;

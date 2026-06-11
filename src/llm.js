@@ -1,35 +1,109 @@
 import OpenAI from 'openai';
-import { getContentPrompt, getFormatPrompt } from './prompts.js';
+import { getContentPrompt, getFormatPrompt, getRefinePrompt, getRepairPrompt } from './prompts.js';
 import { getProvider } from './provider.js';
+import { validateNote } from './validator.js';
 
-export async function generateNote(config, { question, content: rawContent, existingFiles, providerName = 'default', forcedType = null }, OpenAIClient = OpenAI) {
+async function chat(config, providerName, OpenAIClient, { system, user }, { json = false } = {}) {
   const { client, model } = getProvider(config, providerName, OpenAIClient);
-  const lang = config.language || 'zh';
-
-  let layer1Content = null;
-  let contentResult = rawContent;
-
-  if (!rawContent) {
-    const { system, user } = getContentPrompt(question, lang);
-    const layer1 = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
-      ]
-    });
-    layer1Content = layer1.choices[0].message.content;
-    contentResult = layer1Content;
-  }
-
-  const { system, user } = getFormatPrompt(contentResult, config.domains, existingFiles, forcedType, null, lang);
-  const layer2 = await client.chat.completions.create({
+  const payload = {
     model,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: user }
     ]
-  });
+  };
+  if (json) payload.response_format = { type: 'json_object' };
+  const result = await client.chat.completions.create(payload);
+  return result.choices[0].message.content;
+}
 
-  return { note: layer2.choices[0].message.content, source: layer1Content };
+const FRONTMATTER_KEYS = ['title', 'type', 'source', 'domain', 'topic', 'tags', 'created', 'updated'];
+
+// The format pass returns {frontmatter, body} as JSON and the YAML is rendered
+// here, in code — the model never emits YAML, which eliminates the fence /
+// localized-key / quoting error class at the source.
+function renderNote(frontmatter, body) {
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [];
+  for (const key of FRONTMATTER_KEYS) {
+    let value = frontmatter[key] ?? '';
+    if (key === 'tags') {
+      const tags = Array.isArray(value) ? value : String(value).replace(/^\[|\]$/g, '').split(',');
+      value = `[${tags.map(t => String(t).trim().replace(/\s+/g, '-')).filter(Boolean).join(', ')}]`;
+    } else if ((key === 'created' || key === 'updated') && !value) {
+      value = today;
+    }
+    lines.push(`${key}: ${value}`);
+  }
+  return `---\n${lines.join('\n')}\n---\n\n${String(body).trim()}\n`;
+}
+
+// Parse a {frontmatter, body} JSON reply into rendered markdown; null when the
+// model ignored the JSON instruction (caller falls back to treating the raw
+// reply as a legacy markdown note — saveNote's cleaning still applies).
+function assembleNote(raw) {
+  const cleaned = (raw || '').replace(/```json|```/g, '');
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    if (parsed && typeof parsed === 'object' && parsed.frontmatter && typeof parsed.body === 'string') {
+      return renderNote(parsed.frontmatter, parsed.body);
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
+// Validate → at most ONE corrective call → best-effort. A persistently invalid
+// note is still saved (with a warning) rather than lost; worst case is 1 extra call.
+export async function repairNote(config, { note, providerName = 'default' }, OpenAIClient = OpenAI) {
+  const errors = validateNote(note);
+  if (errors.length === 0) return note;
+
+  const prompt = getRepairPrompt(note, errors, config.language || 'zh');
+  const raw = await chat(config, providerName, OpenAIClient, prompt, { json: true });
+  const repaired = assembleNote(raw) || raw;
+
+  const remaining = validateNote(repaired);
+  const best = remaining.length <= errors.length ? repaired : note;
+  const bestErrors = Math.min(remaining.length, errors.length);
+  if (bestErrors > 0) {
+    console.warn(`Note saved with unresolved schema issues:\n  - ${validateNote(best).join('\n  - ')}`);
+  }
+  return best;
+}
+
+// Pass 1: free-form answer, no schema to juggle.
+export async function answerQuestion(config, { question, providerName = 'default' }, OpenAIClient = OpenAI) {
+  const prompt = getContentPrompt(question, config.language || 'zh');
+  return chat(config, providerName, OpenAIClient, prompt);
+}
+
+// Interactive ask: revise/extend the free-form answer per a follow-up. Schema
+// concerns (frontmatter, links, sections) belong to the single format pass at save.
+export async function refineAnswer(config, { answer, followUp, providerName = 'default' }, OpenAIClient = OpenAI) {
+  const prompt = getRefinePrompt(answer, followUp, config.language || 'zh');
+  return chat(config, providerName, OpenAIClient, prompt);
+}
+
+// Pass 2: reshape content into the note skeleton + frontmatter, then verify.
+export async function formatNote(config, { content, candidates = [], forcedType = null, sourceTitle = null, providerName = 'default' }, OpenAIClient = OpenAI) {
+  const prompt = getFormatPrompt(content, config.domains, candidates, forcedType, sourceTitle, config.language || 'zh');
+  const raw = await chat(config, providerName, OpenAIClient, prompt, { json: true });
+  const note = assembleNote(raw) || raw;
+  return repairNote(config, { note, providerName }, OpenAIClient);
+}
+
+export async function generateNote(config, { question, content: rawContent, candidates = [], providerName = 'default', forcedType = null }, OpenAIClient = OpenAI) {
+  let layer1Content = null;
+  let contentResult = rawContent;
+
+  if (!rawContent) {
+    layer1Content = await answerQuestion(config, { question, providerName }, OpenAIClient);
+    contentResult = layer1Content;
+  }
+
+  const note = await formatNote(config, { content: contentResult, candidates, forcedType, providerName }, OpenAIClient);
+  return { note, source: layer1Content };
 }

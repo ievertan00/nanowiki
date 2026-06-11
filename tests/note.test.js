@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { saveNote, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
+import { saveNote, extractHumanInsight, restoreHumanInsight, appendToSection } from '../src/note.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -87,6 +87,24 @@ describe('saveNote', () => {
 
     ledger = fs.readFileSync(path.join(vault, 'meta', 'wanted-notes.md'), 'utf8');
     assert.doesNotMatch(ledger, /\| Wanted Concept \|/);
+  });
+});
+
+describe('appendToSection', () => {
+  const note = '## Source Facts\n- a fact\n\n## Connections\nrelated:: [[x]]\n\n## Speculation\nMaybe.';
+
+  test('inserts at the end of the section, before the next heading', () => {
+    const result = appendToSection(note, 'Connections', 'extends:: [[y]]');
+    assert.match(result, /related:: \[\[x\]\]\nextends:: \[\[y\]\]\n\n## Speculation/);
+  });
+
+  test('appends to a section at the end of the file', () => {
+    const result = appendToSection(note, 'Speculation', '- new idea');
+    assert.ok(result.trimEnd().endsWith('Maybe.\n- new idea'));
+  });
+
+  test('returns null when the section is missing', () => {
+    assert.strictEqual(appendToSection(note, 'Open Questions', '- q'), null);
   });
 });
 

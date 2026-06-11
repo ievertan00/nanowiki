@@ -16,14 +16,21 @@ npm run skills:install        # installs skills/wiki-* into each detected CLI: ~
 node --test                   # run the whole suite (requires WIKI_PATH set)
 node --test tests\note.test.js   # run a single test file
 
-wiki ask "<question>"         # two-pass: answer, then format into a note
+wiki ask "<question>"         # answer (pass 1) -> interactive refine loop (TTY only) -> format+save (pass 2)
+                              #   "Any further question? [Y/n]": Enter/y = refine the free-form answer, n = format and save once
+                              #   non-TTY stdin/stdout (pipes, scripts) skips the loop entirely
 wiki rewrite <file>           # reformat an existing file into the schema (single pass)
 wiki ingest <file|url>        # literature note + fan-out updates to existing notes
                               #   <file>: bare name resolves against <vault>/sources/, else a literal path
                               #   <url>:  http(s) URL fetched via a domain adapter (src/fetch-source.js) into
                               #           <vault>/sources/, then ingested like a file (YouTube -> transcript)
                               #   already-ingested sources (hash ledger meta/ingested.json) are skipped; --force re-ingests
-wiki lint                     # LLM health-check report into meta/lint-<date>.md
+wiki update <note> "<info>"   # deliberately evolve one note: LLM integrates the info, Human Insight preserved,
+                              #   falls back to a verbatim Source Facts append if the rewrite drops existing facts
+wiki questions                # deterministic (no LLM): harvest every note's ## Open Questions + the wanted-notes
+                              #   ledger into meta/questions.md — a worklist to feed back into `wiki ask`
+wiki lint                     # LLM health-check report into meta/lint-<date>.md; also emits machine-applicable
+                              #   link ops — listed as proposals, or applied in code with --fix
 ```
 
 All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--type <atomic|literature>`.
@@ -40,10 +47,16 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 
 **The LLM pipeline is the core.** Two-pass generation is deliberate (`src/llm.js`):
 
-- Pass 1 — `getContentPrompt`: a near-empty system prompt asks the model to just _answer well_, with no schema to juggle. Skipped for `rewrite` (the file content is the input). The raw pass-1 answer is also saved to `sources/` so the unformatted answer is never lost.
+- Pass 1 — `getContentPrompt`: a near-empty system prompt asks the model to just _answer well_, with no schema to juggle. Skipped for `rewrite` (the file content is the input). For `ask` on a TTY, an interactive loop (`refineAnswer` + `getRefinePrompt`) revises this **free-form answer** per user follow-ups — schema-free by design — before the single format pass runs at save. The final answer (refined, if the loop ran) is saved to `sources/` so the unformatted answer is never lost.
 - Pass 2 — `getFormatPrompt`: a second call reshapes that answer into the note skeleton + YAML frontmatter, assigning domain/topic against the existing taxonomy and linking only to notes that already exist.
 
+**Verified generation** (`src/validator.js` + `llm.js`): the format pass asks for `{frontmatter, body}` as **JSON** (`response_format: json_object`) and the YAML is rendered in code (`renderNote` in `llm.js`) — the model never emits YAML, which eliminates the fence/localized-key/quoting error class; tags are kebab-cased during rendering. `validateNote` then runs deterministic checks (frontmatter keys, type enum, tag syntax, all six sections present and ordered, known typed-link keywords, no fences); on failure `repairNote` makes **at most one** corrective call carrying the exact violations, then keeps the better of the two versions and warns — a persistently invalid note is saved best-effort, never lost, never looped on. `updateNote` (ingest fan-out) goes through the same validate→repair path since whole-note rewrites are the widest trust boundary. If the model ignores the JSON instruction, the raw reply is treated as a legacy markdown note and the same validation applies.
+
+**Candidate retrieval** (`src/retrieve.js`): generation prompts do **not** receive every note filename. Each command builds an in-memory catalog (slug, title, domain/topic/tags, first `## Synthesis` line) and `selectCandidates` picks the top-40 by IDF-weighted lexical overlap (CJK-aware via character bigrams; title weighted over taxonomy over summary). Vaults with ≤40 notes pass through whole, so small-vault behavior is unchanged. There is deliberately **no persisted index** — a full scan is milliseconds at realistic scale and a cache would go stale under the skills front end. Narrowing candidates can't create dead links: `removeDeadLinks` still validates against the real filesystem at save. `lint` is sharded the same way (`lint.js`): notes are grouped by domain and greedy-packed into ~48k-char chunks, one LLM call per chunk, merged into a single report.
+
 `ingest` (`src/ingest.js`) is a different two-pass shape: pass 1 extracts JSON (`{summary, updates[]}`), pass 2 formats the summary as a `literature` note, then each `update` is applied to an existing note via a third prompt. Note targets that don't resolve to a file are skipped, not created.
+
+**Closed loops** (`update` / `questions` / `lint --fix`): the LLM's own outputs feed the system's growth instead of dying in reports. Stripped dead links land in `meta/wanted-notes.md`; `wiki questions` merges them with every note's `## Open Questions` into `meta/questions.md` (pure code, no LLM). `lint` asks for a ` ```json {"ops": [...]} ` block alongside the prose report (`extractLintOps` strips it out); `--fix` applies the safe subset in code (`applyLintOps`: typed links where both endpoints exist, deduped, inserted via `appendToSection`, written through `saveNote`) — everything else stays a human decision. Ingest's fan-out wraps each target in try/catch and logs per-target outcomes (`updated:/skipped:/failed:`) as detail lines under the log entry. `updateNote` returns `{content, preserved}`: after the LLM's whole-note rewrite, `lostSourceFacts` (validator.js) checks that pre-existing Source Facts bullets survived; if any were dropped, the deterministic fallback keeps the original note and appends the addition as a new bullet — integration quality sacrificed, content never lost.
 
 `rewrite` and `ingest` resolve their `<file>` argument the same way (`bin/wiki.js`): a bare filename is looked up under `<vault>/sources/` first, then falls back to the literal path (relative to cwd or absolute). The skills (`wiki-rewrite`/`wiki-ingest`) mirror this and additionally strip a leading `@` and surrounding quotes from the argument. Keep the two in sync if you change the rule.
 
@@ -63,7 +76,7 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 
 ## Conventions and gotchas
 
-- **The test suite is mostly stale.** Most of `tests/` was written against the pre-redesign API (it references `pillars`, `type: 'how'`, and a string return from `generateNote`, whereas the current `generateNote` returns `{ note, source }` and uses the two-pass flow). Exception: `tests/note.test.js` is migrated and green (covers `saveNote`'s collision guard, `updated:` bump, dead-link capture, wanted-notes ledger). Don't assume a green baseline elsewhere. If you change `src/`, update the matching test rather than trusting it.
+- **The test suite is fully migrated and green** (`node --test`, all files). LLM-touching paths are tested with a mock OpenAI client (see `tests/llm.test.js`); everything else is pure-function or temp-dir filesystem tests. `tests/skill-sync.test.js` byte-compares the hand-duplicated skill assets and asserts the skills' `note-schema.md` carries the same sections/link-types as `SKELETON` in `src/prompts.js` — if you change a shared asset or the schema, that test tells you which copies to update. Keep the suite green: if you change `src/`, update the matching test in the same change.
 - Filenames everywhere are slugified the same way: non-`[a-zA-Z0-9一-鿿]` runs collapse to `-` (alphanumerics **and** CJK ideographs are preserved, so Chinese titles produce Chinese filenames). Re-implemented in three places — `bin/wiki.js` (`slugToPath`) and `src/note.js` (`saveNote`, `saveSource`); keep them in sync if you change the rule. The `一-鿿` CJK range matches the one in `note.js`'s `normalize`.
 - `bin/wiki.js` derives `domain`/`topic`/`title` by regex-scraping the frontmatter of the LLM's output (`extractFrontmatter`), then trusts those values for taxonomy + filename. Malformed frontmatter degrades gracefully (falls back to the question/filename).
 - Follow the user's global rules: PowerShell only, Windows absolute paths, no `&&` chaining, secrets in `.env` (never hardcoded). `.env` and the vault live outside the repo's committed surface.

@@ -3,82 +3,90 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { updateMOC, updateIndex } from '../src/meta.js';
+import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, parseFrontmatter } from '../src/meta.js';
 
-describe('meta management', () => {
-  let tempDir;
+function writeNote(dir, slug, { title = slug, domain = 'ai', topic = 'llm', openQuestions = [] } = {}) {
+  const oq = openQuestions.length ? openQuestions.map(q => `- ${q}`).join('\n') : '';
+  fs.writeFileSync(path.join(dir, 'notes', `${slug}.md`), [
+    '---', `title: ${title}`, 'type: atomic', `domain: ${domain}`, `topic: ${topic}`,
+    'tags: [t]', 'created: 2026-01-01', 'updated: 2026-01-01', '---', '',
+    '## Source Facts', '- f', '', '## Synthesis', 'S.', '', '## Connections', '',
+    '## Speculation', '', '## Open Questions', oq, '', '## Human Insight', ''
+  ].join('\n'));
+}
+
+describe('derived files', () => {
+  let vault;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-meta-test-'));
+    vault = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-test-meta-'));
+    ['notes', 'moc', 'meta'].forEach(d => fs.mkdirSync(path.join(vault, d)));
   });
 
   afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.rmSync(vault, { recursive: true, force: true });
   });
 
-  test('updateIndex creates index.md with alphabetical links', () => {
-    // Setup directory structure
-    const dirs = ['how', 'what', 'why', 'fact'];
-    dirs.forEach(dir => fs.mkdirSync(path.join(tempDir, dir), { recursive: true }));
-
-    // Create some files (unordered)
-    fs.writeFileSync(path.join(tempDir, 'what', 'javascript.md'), '# JavaScript');
-    fs.writeFileSync(path.join(tempDir, 'how', 'installing-node.md'), '# Installing Node');
-    fs.writeFileSync(path.join(tempDir, 'fact', 'v8-version.md'), '# V8 Version');
-
-    updateIndex(tempDir);
-
-    const indexPath = path.join(tempDir, 'meta', 'index.md');
-    assert.strictEqual(fs.existsSync(indexPath), true);
-
-    const content = fs.readFileSync(indexPath, 'utf8');
-    assert.ok(content.includes('# Alphabetical Index'));
-    
-    const lines = content.split('\n').filter(l => l.startsWith('- '));
-    assert.strictEqual(lines[0].includes('[[installing-node]]'), true);
-    assert.strictEqual(lines[1].includes('[[javascript]]'), true);
-    assert.strictEqual(lines[2].includes('[[v8-version]]'), true);
+  test('parseFrontmatter reads key: value pairs and strips quotes', () => {
+    const fm = parseFrontmatter('---\ntitle: "Quoted Title"\ndomain: ai\nempty:\n---\nbody');
+    assert.strictEqual(fm.title, 'Quoted Title');
+    assert.strictEqual(fm.domain, 'ai');
+    assert.strictEqual(fm.empty, undefined); // empty values are skipped
   });
 
-  test('updateMOC creates MOC.md with categorized links', () => {
-    // Setup directory structure
-    const dirs = ['how', 'what', 'why', 'fact'];
-    dirs.forEach(dir => fs.mkdirSync(path.join(tempDir, dir), { recursive: true }));
+  test('updateMOC writes one moc/<domain>.md grouped by topic with [[slug|Title]] links', () => {
+    writeNote(vault, 'kv-cache', { title: 'KV Cache Reuse', domain: 'ai', topic: 'inference' });
+    writeNote(vault, 'lora', { title: 'LoRA Fine-Tuning', domain: 'ai', topic: 'training' });
+    writeNote(vault, 'tcp', { title: 'TCP Basics', domain: 'networking', topic: 'transport' });
 
-    // Create some files
-    fs.writeFileSync(path.join(tempDir, 'how', 'installing-node.md'), '# Installing Node');
-    fs.writeFileSync(path.join(tempDir, 'what', 'javascript.md'), '# JavaScript');
-    fs.writeFileSync(path.join(tempDir, 'why', 'event-loop.md'), '# Event Loop');
-    fs.writeFileSync(path.join(tempDir, 'fact', 'v8-version.md'), '# V8 Version');
+    updateMOC(vault);
 
-    updateMOC(tempDir);
-
-    const mocPath = path.join(tempDir, 'meta', 'MOC.md');
-    assert.strictEqual(fs.existsSync(mocPath), true);
-
-    const content = fs.readFileSync(mocPath, 'utf8');
-    assert.ok(content.includes('# Table of Contents'));
-    assert.ok(content.includes('## How-to'));
-    assert.ok(content.includes('- [[installing-node]]'));
-    assert.ok(content.includes('## Concepts'));
-    assert.ok(content.includes('- [[javascript]]'));
-    assert.ok(content.includes('## Mechanisms'));
-    assert.ok(content.includes('- [[event-loop]]'));
-    assert.ok(content.includes('## Facts'));
-    assert.ok(content.includes('- [[v8-version]]'));
+    const ai = fs.readFileSync(path.join(vault, 'moc', 'ai.md'), 'utf8');
+    assert.match(ai, /## inference\n- \[\[kv-cache\|KV Cache Reuse\]\]/);
+    assert.match(ai, /## training\n- \[\[lora\|LoRA Fine-Tuning\]\]/);
+    assert.ok(fs.existsSync(path.join(vault, 'moc', 'networking.md')));
   });
 
-  test('updateMOC omits empty sections', () => {
-    // Only setup 'how' directory with one file
-    fs.mkdirSync(path.join(tempDir, 'how'), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, 'how', 'test.md'), 'content');
+  test('updateIndex writes a sorted catalog to meta/index.md', () => {
+    writeNote(vault, 'zeta');
+    writeNote(vault, 'alpha');
 
-    updateMOC(tempDir);
+    updateIndex(vault);
 
-    const content = fs.readFileSync(path.join(tempDir, 'meta', 'MOC.md'), 'utf8');
-    assert.ok(content.includes('## How-to'));
-    assert.ok(!content.includes('## Concepts'));
-    assert.ok(!content.includes('## Mechanisms'));
-    assert.ok(!content.includes('## Facts'));
+    const index = fs.readFileSync(path.join(vault, 'meta', 'index.md'), 'utf8');
+    assert.match(index, /^# Index\n\n- \[\[alpha\]\]\n- \[\[zeta\]\]\n$/);
+  });
+
+  test('updateWikiDomains rewrites only the marker block in WIKI.md', () => {
+    writeNote(vault, 'kv-cache', { domain: 'ai' });
+    fs.writeFileSync(path.join(vault, 'WIKI.md'),
+      'My intro\n\n<!-- domains:start (auto-generated — do not edit) -->\nold\n<!-- domains:end -->\nMy outro');
+
+    updateWikiDomains(vault);
+
+    const wiki = fs.readFileSync(path.join(vault, 'WIKI.md'), 'utf8');
+    assert.match(wiki, /My intro/);
+    assert.match(wiki, /My outro/);
+    assert.match(wiki, /- \[\[ai\]\]/);
+    assert.doesNotMatch(wiki, /\nold\n/);
+  });
+
+  test('updateQuestions harvests Open Questions by domain and the wanted-notes ledger', () => {
+    writeNote(vault, 'kv-cache', { domain: 'ai', openQuestions: ['How does paging interact?'] });
+    writeNote(vault, 'tcp', { domain: 'networking', openQuestions: ['QUIC comparison?'] });
+    writeNote(vault, 'empty-note', { domain: 'ai', openQuestions: [] });
+    writeNote(vault, 'none-note', { domain: 'ai', openQuestions: ['none'] });
+    fs.writeFileSync(path.join(vault, 'meta', 'wanted-notes.md'),
+      '| Date | Target | Link Type | Wanted By |\n| --- | --- | --- | --- |\n| 2026-06-11 | Speculative Decoding | extends | kv-cache |\n');
+
+    const md = updateQuestions(vault);
+
+    assert.ok(fs.existsSync(path.join(vault, 'meta', 'questions.md')));
+    assert.match(md, /## ai\n\n### \[\[kv-cache\]\]\n- How does paging interact\?/);
+    assert.match(md, /## networking/);
+    assert.doesNotMatch(md, /empty-note/);
+    assert.doesNotMatch(md, /none-note/); // "none" placeholders are filtered
+    assert.match(md, /## Wanted Notes/);
+    assert.match(md, /- Speculative Decoding \(extends, wanted by \[\[kv-cache\]\]\)/);
   });
 });
