@@ -22,6 +22,7 @@ wiki ingest <file|url>        # literature note + fan-out updates to existing no
                               #   <file>: bare name resolves against <vault>/sources/, else a literal path
                               #   <url>:  http(s) URL fetched via a domain adapter (src/fetch-source.js) into
                               #           <vault>/sources/, then ingested like a file (YouTube -> transcript)
+                              #   already-ingested sources (hash ledger meta/ingested.json) are skipped; --force re-ingests
 wiki lint                     # LLM health-check report into meta/lint-<date>.md
 ```
 
@@ -48,10 +49,13 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 
 **The note schema lives in `src/prompts.js`, not the README.** `SKELETON` is the authoritative section list: `Source Facts`, `Synthesis`, `Connections`, `Speculation`, `Open Questions`, `Human Insight`. (The README's "Note Anatomy" section is stale and describes an older schema — trust the code.) Connections use **typed links** (`extends::`, `contradicts::`, `requires::`, `examples::`, `related::`).
 
-**Two invariants enforced in code, independent of the LLM** (`src/note.js`):
+**Write-path invariants enforced in code, independent of the LLM** (`src/note.js`):
 
 - _Human Insight is sacred._ Before any rewrite/update, `extractHumanInsight` pulls that section out; `restoreHumanInsight` puts the human's text back verbatim after the LLM responds. The LLM is also told never to touch it, but the code guarantees it.
-- _No dead links._ `removeDeadLinks` strips any typed `[[link]]` whose target isn't a real file in `notes/`, using a Unicode-aware `normalize` (handles CJK). `cleanContent` also strips stray ` ```markdown ` / ` ```yaml ` fences the model sometimes emits.
+- _No dead links — but no lost judgment either._ `removeDeadLinks` strips any typed `[[link]]` whose target isn't a real file in `notes/`, using a Unicode-aware `normalize` (handles CJK), and the stripped links are appended to `meta/wanted-notes.md` (deduped on target+wanting-note, auto-pruned once the target exists) as a wishlist of notes to create. `cleanContent` also strips stray ` ```markdown ` / ` ```yaml ` fences the model sometimes emits.
+- _No silent overwrites._ `saveNote(wikiPath, {title, content, allowOverwrite})` returns `{path, renamed}`. Operations whose job is overwriting (`rewrite`, ingest's fan-out updates) pass `allowOverwrite: true`; `ask` and ingest's literature note keep the default `false`, so a slug collision deflects to a `-2` suffix with a loud warning and a `collision` log entry instead of destroying the existing note. **All** note writes go through `saveNote` — never `fs.writeFileSync` a note directly, or it skips cleaning, dead-link capture, and the `updated:` bump.
+- _Freshness is code's job._ `saveNote` sets the frontmatter `updated:` field to today on every write; the LLM is never trusted with it.
+- _Ingest is idempotent._ `ingest` hashes the source content into `meta/ingested.json` and skips already-ingested sources (re-running the fan-out would duplicate additions); `--force` overrides.
 
 **Vault is flat + derived** (`src/vault.js`, `src/meta.js`): notes all live directly in `notes/` — organization is frontmatter + links, never folders. On startup `initVault` (`src/vault.js`) creates the four vault dirs; on a first run it also seeds a default `wiki-config.json` (`{language, domains:{}}`) and `WIKI.md` (copied from `src/WIKI.template.md`) — idempotent, so existing files and a human's `WIKI.md` edits are never overwritten. After every mutating command, `updateMOC` regenerates `moc/<domain>.md` (grouped by topic), `updateIndex` regenerates `meta/index.md`, and `updateWikiDomains` rewrites only the `<!-- domains -->` block of `WIKI.md` — all from frontmatter. These derived files (and those generated regions) are **owned by the CLI** — don't hand-edit them; they're overwritten. `meta/log.md` is an append-only, grep-friendly operation log.
 
@@ -59,7 +63,7 @@ All commands accept `--provider <name>` (global) and `ask`/`rewrite` accept `--t
 
 ## Conventions and gotchas
 
-- **The test suite is currently stale.** `node --test` reports ~10/12 failing because `tests/` was written against the pre-redesign API (it references `pillars`, `type: 'how'`, and a string return from `generateNote`, whereas the current `generateNote` returns `{ note, source }` and uses the two-pass flow). Treat the tests as not-yet-migrated; don't assume a green baseline. If you change `src/`, update the matching test rather than trusting it.
+- **The test suite is mostly stale.** Most of `tests/` was written against the pre-redesign API (it references `pillars`, `type: 'how'`, and a string return from `generateNote`, whereas the current `generateNote` returns `{ note, source }` and uses the two-pass flow). Exception: `tests/note.test.js` is migrated and green (covers `saveNote`'s collision guard, `updated:` bump, dead-link capture, wanted-notes ledger). Don't assume a green baseline elsewhere. If you change `src/`, update the matching test rather than trusting it.
 - Filenames everywhere are slugified the same way: non-`[a-zA-Z0-9一-鿿]` runs collapse to `-` (alphanumerics **and** CJK ideographs are preserved, so Chinese titles produce Chinese filenames). Re-implemented in three places — `bin/wiki.js` (`slugToPath`) and `src/note.js` (`saveNote`, `saveSource`); keep them in sync if you change the rule. The `一-鿿` CJK range matches the one in `note.js`'s `normalize`.
 - `bin/wiki.js` derives `domain`/`topic`/`title` by regex-scraping the frontmatter of the LLM's output (`extractFrontmatter`), then trusts those values for taxonomy + filename. Malformed frontmatter degrades gracefully (falls back to the question/filename).
 - Follow the user's global rules: PowerShell only, Windows absolute paths, no `&&` chaining, secrets in `.env` (never hardcoded). `.env` and the vault live outside the repo's committed surface.

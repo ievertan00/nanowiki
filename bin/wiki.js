@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, saveTaxonomy } from '../src/config.js';
@@ -48,6 +49,13 @@ function slugToPath(wikiPath, noteTitle) {
   return path.join(wikiPath, 'notes', slug + '.md');
 }
 
+// A slug collision was deflected to a suffixed filename — make it loud, because
+// suffixed slugs are unreachable by title-derived links until a human renames.
+function warnCollision(savedPath, noteTitle) {
+  console.warn(chalk.yellow(`Warning: a note with this slug already exists — saved as ${path.basename(savedPath)} instead. Rename or merge it; links and updates can't reach the suffixed file.`));
+  appendLog(config.wikiPath, 'collision', noteTitle);
+}
+
 // ── ask ──────────────────────────────────────────────────────────────────────
 
 program
@@ -69,7 +77,8 @@ program
     const { domain, topic, title } = extractFrontmatter(note);
     const noteTitle = title || question.slice(0, 60);
 
-    const savedPath = saveNote(config.wikiPath, { title: noteTitle, content: note });
+    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: note });
+    if (renamed) warnCollision(savedPath, noteTitle);
     if (source) saveSource(config.wikiPath, { title: noteTitle, question, content: source });
     saveTaxonomy(config.wikiPath, config, domain, topic);
     appendLog(config.wikiPath, 'ask', noteTitle);
@@ -114,7 +123,7 @@ program
     const { domain, topic, title } = extractFrontmatter(content);
     const noteTitle = title || path.basename(file, '.md');
 
-    const savedPath = saveNote(config.wikiPath, { title: noteTitle, content });
+    const { path: savedPath } = saveNote(config.wikiPath, { title: noteTitle, content, allowOverwrite: true });
     saveTaxonomy(config.wikiPath, config, domain, topic);
     appendLog(config.wikiPath, 'rewrite', noteTitle);
     console.log(chalk.green(`Saved: ${savedPath}`));
@@ -128,7 +137,8 @@ program
 program
   .command('ingest')
   .argument('<file...>')
-  .action(async (fileParts) => {
+  .option('--force', 'Re-ingest a source that was already ingested')
+  .action(async (fileParts, cmdOptions) => {
     const arg = fileParts.join(' ').trim();
     const options = program.opts();
 
@@ -159,6 +169,16 @@ program
       sourceTitle = path.basename(file, path.extname(file));
     }
 
+    // Idempotency ledger: the same source content is never ingested twice, since
+    // re-running the fan-out would duplicate additions in the target notes.
+    const sourceHash = crypto.createHash('sha256').update(sourceContent).digest('hex').slice(0, 16);
+    const ledgerPath = path.join(config.wikiPath, 'meta', 'ingested.json');
+    const ledger = fs.existsSync(ledgerPath) ? JSON.parse(fs.readFileSync(ledgerPath, 'utf8')) : {};
+    if (ledger[sourceHash] && !cmdOptions.force) {
+      console.log(chalk.yellow(`Already ingested on ${ledger[sourceHash].date} as "${ledger[sourceHash].title}". Use --force to re-ingest.`));
+      return;
+    }
+
     console.log(chalk.blue(`Ingesting "${sourceTitle}"... (provider: ${options.provider})`));
     const existingFiles = getVaultFiles(config.wikiPath);
 
@@ -173,7 +193,8 @@ program
     // Save literature note
     const { domain, topic, title } = extractFrontmatter(literatureNote);
     const noteTitle = title || sourceTitle;
-    const savedPath = saveNote(config.wikiPath, { title: noteTitle, content: literatureNote });
+    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: literatureNote });
+    if (renamed) warnCollision(savedPath, noteTitle);
     saveTaxonomy(config.wikiPath, config, domain, topic);
     console.log(chalk.green(`Literature note: ${savedPath}`));
 
@@ -194,10 +215,16 @@ program
         providerName: options.provider
       });
       updated = restoreHumanInsight(updated, humanInsight);
-      fs.writeFileSync(notePath, updated);
+      // Through saveNote so the update gets the same cleaning, dead-link capture,
+      // and `updated:` bump as a fresh note (slugs are slugify-idempotent, so the
+      // title `note` resolves back to notePath).
+      saveNote(config.wikiPath, { title: note, content: updated, allowOverwrite: true });
       updatedCount++;
       console.log(chalk.green(`  Updated: ${note}`));
     }
+
+    ledger[sourceHash] = { title: sourceTitle, date: new Date().toISOString().slice(0, 10) };
+    fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
 
     appendLog(config.wikiPath, 'ingest', sourceTitle);
     console.log(chalk.green(`\nDone. 1 literature note + ${updatedCount} updated.`));

@@ -59,6 +59,18 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
 
 Point Obsidian at `WIKI_PATH`. The vault is Obsidian-native — `[[links]]`, YAML frontmatter, and folder structure work out of the box.
 
+**4. (Recommended) Back your vault with git**
+
+The LLM rewrites notes in place — `rewrite` and `ingest` both overwrite files. A git repo in the vault turns every LLM edit into a reviewable, revertible diff:
+
+```powershell
+cd $env:WIKI_PATH
+git init
+git add -A; git commit -m "vault baseline"
+```
+
+Commit whenever it suits you (after each session, or after large ingests). If an update ever goes wrong, `git diff` shows exactly what the LLM changed and `git checkout -- <file>` undoes it. The CLI never runs git itself — the history is yours.
+
 ---
 
 ## Skills
@@ -100,7 +112,9 @@ wiki-vault/
 │   └── engineering.md
 ├── meta/
 │   ├── index.md      ← full note catalog
-│   └── log.md        ← chronological operation log
+│   ├── log.md        ← chronological operation log
+│   ├── ingested.json ← hashes of already-ingested sources (re-ingest guard)
+│   └── wanted-notes.md ← links the LLM wanted to notes that don't exist yet
 ├── wiki-config.json  ← taxonomy + provider config
 └── WIKI.md           ← schema document
 ```
@@ -156,10 +170,10 @@ Ask anything. The LLM answers naturally, then formats the answer into a structur
   /wiki-ask "Why does gradient vanishing happen in deep networks?"
   ```
 
-You can switch providers (`--provider`) or force a note type (`--type`) with the CLI:
+You can switch providers (`--provider`) or force a note type (`--type atomic|literature`) with the CLI:
 ```powershell
 wiki ask "What is attention?" --provider deepseek
-wiki ask "Quick note on RLHF" --type fleeting
+wiki ask "Summary of the RLHF paper" --type literature
 ```
 
 ### `wiki rewrite <file>`
@@ -180,6 +194,8 @@ Reformat an existing file (like a draft or literature notes) into the standard w
 Process a source document. The LLM reads the document, creates a new `literature` note summarizing it, and then fans out its key findings into existing related notes throughout the wiki. This is the most powerful command, as a single source may update many notes. Updates that target a note which doesn't exist are skipped (never created), and each touched note keeps its `## Human Insight` section verbatim.
 
 `<file>` resolves the same way as `rewrite`: a **bare filename** is looked up under `<vault>/sources/`, while a **path** is used as-is.
+
+A source whose content was already ingested is skipped (tracked by hash in `meta/ingested.json`) so the fan-out never duplicates additions — pass `--force` to re-ingest deliberately.
 
 - **CLI Usage:**
   ```powershell
