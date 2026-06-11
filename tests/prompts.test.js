@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { getContentPrompt, getFormatPrompt, getExtractionPrompt, getRefinePrompt } from '../src/prompts.js';
+import { getContentPrompt, getFormatPrompt, getExtractionPrompt, getRefinePrompt, getNoteUpdatePrompt, getRepairPrompt } from '../src/prompts.js';
 
 describe('getContentPrompt', () => {
   test('passes the question through and sets the language line', () => {
@@ -30,17 +30,25 @@ describe('getFormatPrompt', () => {
     assert.match(getFormatPrompt('c', {}, []).user, /EXISTING NOTES[^\n]*:\nnone/);
   });
 
-  test('includes the skeleton sections and the strict link rule', () => {
-    const { user } = getFormatPrompt('content', {}, []);
+  test('static blocks (skeleton, link rule, language) live in the system message for prefix caching', () => {
+    const { system, user } = getFormatPrompt('content', {}, [], null, null, 'zh');
     for (const section of ['## Source Facts', '## Synthesis', '## Connections', '## Speculation', '## Open Questions', '## Human Insight']) {
-      assert.ok(user.includes(section), `missing ${section}`);
+      assert.ok(system.includes(section), `missing ${section}`);
     }
-    assert.match(user, /ONLY link to notes from the EXISTING NOTES list/);
+    assert.match(system, /ONLY link to notes from the EXISTING NOTES list/);
+    assert.match(system, /Keep these structural tokens EXACTLY in English/);
+    assert.doesNotMatch(user, /## Speculation/); // skeleton not duplicated into the per-call message
   });
 
-  test('zh directive pins structural tokens to English; forcedType and taxonomy are threaded', () => {
+  test('dates are never requested from the model', () => {
+    const { system, user } = getFormatPrompt('content', {}, []);
+    assert.match(system, /do NOT include them/);
+    assert.doesNotMatch(system, /"created"/);
+    assert.doesNotMatch(user, /created:/);
+  });
+
+  test('forcedType, sourceTitle, and taxonomy are threaded into the user message', () => {
     const { user } = getFormatPrompt('content', { ai: ['llm'] }, [], 'literature', 'paper.md', 'zh');
-    assert.match(user, /Keep these structural tokens EXACTLY in English/);
     assert.match(user, /type: literature/);
     assert.match(user, /source: paper\.md/);
     assert.match(user, /ai: llm/);
@@ -60,6 +68,37 @@ describe('getExtractionPrompt', () => {
 
   test('renders "none" when no candidates', () => {
     assert.match(getExtractionPrompt('s', 't', []).user, /EXISTING WIKI NOTES[^\n]*:\nnone/);
+  });
+
+  test('demands the name before the colon, not the title', () => {
+    const { user } = getExtractionPrompt('s', 't', [
+      { slug: 'kv-cache', title: 'KV Cache Reuse', domain: '', topic: '', tags: '', summary: '' }
+    ]);
+    assert.match(user, /before the colon/);
+    assert.doesNotMatch(user, /exact-existing-note-title/);
+  });
+});
+
+describe('getNoteUpdatePrompt', () => {
+  test('asks for the JSON shape with the verbatim Source Facts contract, no dates', () => {
+    const { system, user } = getNoteUpdatePrompt('existing note', 'new info', 'Paper', 'zh');
+    assert.match(system, /valid JSON/);
+    assert.match(user, /\{"frontmatter":/);
+    assert.match(user, /MUST appear in your output verbatim/);
+    assert.match(user, /never delete, merge, shorten, or rephrase/);
+    assert.match(user, /do NOT include them/); // created/updated stay code-owned
+    assert.match(user, /Keep these structural tokens EXACTLY in English/);
+    assert.match(user, /NEW INFORMATION:\nnew info/);
+    assert.match(user, /EXISTING NOTE:\nexisting note/);
+  });
+});
+
+describe('getRepairPrompt', () => {
+  test('carries the language directive and the dateless JSON shape', () => {
+    const { user } = getRepairPrompt('broken note', ['Missing section: ## Synthesis'], 'zh');
+    assert.match(user, /Keep these structural tokens EXACTLY in English/);
+    assert.match(user, /- Missing section: ## Synthesis/);
+    assert.doesNotMatch(user, /"created"/);
   });
 });
 

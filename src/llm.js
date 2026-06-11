@@ -41,7 +41,7 @@ function renderNote(frontmatter, body) {
 // Parse a {frontmatter, body} JSON reply into rendered markdown; null when the
 // model ignored the JSON instruction (caller falls back to treating the raw
 // reply as a legacy markdown note — saveNote's cleaning still applies).
-function assembleNote(raw) {
+export function assembleNote(raw) {
   const cleaned = (raw || '').replace(/```json|```/g, '');
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
@@ -55,6 +55,15 @@ function assembleNote(raw) {
   return null;
 }
 
+// Dates are code's job: the prompts never ask the model for created/updated
+// (renderNote stamps today when absent), so any rewrite of an existing note must
+// restore its original created: in code. No-op when `source` has no created line.
+export function carryCreated(source, note) {
+  const created = source.match(/^created:[^\S\r\n]*(\S.*)$/m)?.[1]?.trim();
+  if (!created) return note;
+  return note.replace(/^created:.*$/m, `created: ${created}`);
+}
+
 // Validate → at most ONE corrective call → best-effort. A persistently invalid
 // note is still saved (with a warning) rather than lost; worst case is 1 extra call.
 export async function repairNote(config, { note, providerName = 'default' }, OpenAIClient = OpenAI) {
@@ -63,7 +72,7 @@ export async function repairNote(config, { note, providerName = 'default' }, Ope
 
   const prompt = getRepairPrompt(note, errors, config.language || 'zh');
   const raw = await chat(config, providerName, OpenAIClient, prompt, { json: true });
-  const repaired = assembleNote(raw) || raw;
+  const repaired = carryCreated(note, assembleNote(raw) || raw);
 
   const remaining = validateNote(repaired);
   const best = remaining.length <= errors.length ? repaired : note;

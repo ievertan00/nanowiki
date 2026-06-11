@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { getExtractionPrompt, getNoteUpdatePrompt } from './prompts.js';
 import { getProvider } from './provider.js';
-import { formatNote, repairNote } from './llm.js';
+import { formatNote, repairNote, assembleNote, carryCreated } from './llm.js';
 import { lostSourceFacts } from './validator.js';
 import { appendToSection } from './note.js';
 
@@ -48,11 +48,15 @@ export async function updateNote(config, { existingContent, addition, sourceTitl
   const { system, user } = getNoteUpdatePrompt(existingContent, addition, sourceTitle, config.language || 'zh');
   const result = await client.chat.completions.create({
     model,
-    messages: [{ role: 'system', content: system }, { role: 'user', content: user }]
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+    response_format: { type: 'json_object' }
   });
+  // Same {frontmatter, body} path as the format pass: YAML rendered in code, and
+  // the existing note's created: restored — dates are never the model's job.
+  const note = carryCreated(existingContent, assembleNote(result.choices[0].message.content) || result.choices[0].message.content);
   // Whole-note rewrites are the widest trust boundary in the pipeline — verify
   // the schema survived and repair once if not.
-  const updated = await repairNote(config, { note: result.choices[0].message.content, providerName }, OpenAIClient);
+  const updated = await repairNote(config, { note, providerName }, OpenAIClient);
 
   const lost = lostSourceFacts(existingContent, updated);
   if (lost.length === 0) return { content: updated, preserved: true };

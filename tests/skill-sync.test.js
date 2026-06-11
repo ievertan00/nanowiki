@@ -48,9 +48,10 @@ describe('skill asset sync', () => {
   });
 
   test('the skills note schema carries the CLI prompt schema (sections + link types)', () => {
-    const { user } = getFormatPrompt('x', {}, []);
-    const sections = [...user.matchAll(/^## ([A-Za-z ]+)$/gm)].map(m => m[1]);
-    const linkTypes = [...new Set([...user.matchAll(/(\w+):: \[\[note\]\]/g)].map(m => m[1]))];
+    const { system, user } = getFormatPrompt('x', {}, []);
+    const prompt = `${system}\n${user}`; // the skeleton lives in the system message (prefix caching)
+    const sections = [...prompt.matchAll(/^## ([A-Za-z ]+)$/gm)].map(m => m[1]);
+    const linkTypes = [...new Set([...prompt.matchAll(/(\w+):: \[\[note\]\]/g)].map(m => m[1]))];
     assert.ok(sections.length >= 6, 'expected the skeleton sections in the format prompt');
     assert.ok(linkTypes.length === 5, 'expected the five typed-link keywords in the format prompt');
 

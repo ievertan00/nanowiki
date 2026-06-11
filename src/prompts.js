@@ -77,42 +77,46 @@ export function getFormatPrompt(content, domains, candidates, forcedType = null,
   const typeInstruction = forcedType ? `type: ${forcedType}` : `type: atomic or literature`;
   const sourceInstruction = sourceTitle ? `source: ${sourceTitle}` : `source: (leave empty for atomic notes; filename or title of the source document for literature notes)`;
   const linkList = renderCandidates(candidates);
-  const today = new Date().toISOString().slice(0, 10);
 
+  // Everything static per vault config lives in the system message so OpenAI-
+  // compatible prefix caching (DeepSeek/Qwen cache by exact prefix match) reuses
+  // it across calls; per-call values (type/source, taxonomy, candidates, content)
+  // go in the user message. Dates are deliberately absent: renderNote/saveNote
+  // own created/updated, so the model is never asked for them.
   return {
-    system: 'You are a knowledge architect. Format the provided content into a structured Obsidian wiki note. Respond only with valid JSON. Do not add information beyond what is in the content.',
-    user: `Format the following content into an Obsidian wiki note.
+    system: `You are a knowledge architect. Format the provided content into a structured Obsidian wiki note. Respond only with valid JSON. Do not add information beyond what is in the content.
 
 ${languageDirective(lang)}
 
 OUTPUT FORMAT (strict):
 Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
-{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"], "created": "${today}", "updated": "${today}"}, "body": "## Source Facts\\n..."}
-"body" is the complete Markdown note body following the SKELETON below, starting at "## Source Facts". No YAML in the body, no code fences.
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"]}, "body": "## Source Facts\\n..."}
+"body" is the complete Markdown note body following the SKELETON below, starting at "## Source Facts". No YAML in the body, no code fences. The created/updated dates are managed by the system — do NOT include them.
 
 FRONTMATTER VALUES:
 - title: a specific, unique noun phrase that captures the note's single core idea. It must be distinctive enough to stand alone in an index and not collide with adjacent notes. Avoid generic or one-word labels (e.g. "Gemini", "Attention", "Caching"); name the precise concept instead (e.g. "Google Gemini Multimodal Model Family", "Scaled Dot-Product Attention", "Anthropic Prompt Caching"). Use Title Case, no trailing punctuation, and prefer 3–7 words.
+- type and source: as specified in the user message
+- domain and topic: from the TAXONOMY in the user message
+- tags: JSON array of 3–6 tags. Each tag MUST be a single token with NO spaces (Obsidian rejects spaces in tags). Join multi-word concepts with hyphens in kebab-case and keep technical terms recognizable, e.g. ["prompt-caching", "kv-cache", "llm-inference"].
+
+LINKS (strict):
+- In the Connections section, ONLY link to notes from the EXISTING NOTES list in the user message, copying the [[name]] exactly as listed
+- If the list is "none" or a note is not in it, do NOT create any [[links]] — leave Connections empty
+- Creating links to notes that do not exist is forbidden
+
+SKELETON (use these sections in this order):
+${SKELETON}`,
+    user: `Format the following content into an Obsidian wiki note.
+
+FRONTMATTER FOR THIS NOTE:
 - ${typeInstruction}
 - ${sourceInstruction}
-- domain: (see taxonomy below)
-- topic: (see taxonomy below)
-- tags: JSON array of 3–6 tags. Each tag MUST be a single token with NO spaces (Obsidian rejects spaces in tags). Join multi-word concepts with hyphens in kebab-case and keep technical terms recognizable, e.g. ["prompt-caching", "kv-cache", "llm-inference"].
-- created: ${today}
-- updated: ${today}
 
 TAXONOMY:
 ${taxonomyHint}
 
 EXISTING NOTES (most relevant to this content; each line is "[[name]]: title — summary"):
 ${linkList}
-
-LINKS (strict):
-- In the Connections section, ONLY link to notes from the EXISTING NOTES list above, copying the [[name]] exactly as listed
-- If the list is "none" or a note is not in it, do NOT create any [[links]] — leave Connections empty
-- Creating links to notes that do not exist is forbidden
-
-SKELETON (use these sections in this order):
-${SKELETON}
 
 CONTENT:
 ${content}`
@@ -152,12 +156,12 @@ Return a JSON object with exactly this shape:
 {
   "summary": "thorough summary of the source's key facts, arguments, and insights",
   "updates": [
-    {"note": "exact-existing-note-title", "addition": "specific paragraph of new information to integrate"}
+    {"note": "<name copied verbatim from before the colon in the list above>", "addition": "specific paragraph of new information to integrate"}
   ]
 }
 
 Rules:
-- "updates" must only reference titles from the EXISTING WIKI NOTES list above
+- Each "note" value MUST be a name from the EXISTING WIKI NOTES list above, copied verbatim — the part BEFORE the colon, never the title or summary after it
 - Each addition should be one focused paragraph of genuinely new information
 - If no existing notes need updating, return "updates": []
 
@@ -168,10 +172,20 @@ ${sourceContent}`
 
 export function getNoteUpdatePrompt(existingContent, addition, sourceTitle, lang = 'zh') {
   return {
-    system: 'You are updating a wiki note with new information from a source. Preserve all existing content exactly. Integrate the new information naturally into the most appropriate section (Source Facts, Synthesis, or Connections). Never modify or add content to the ## Human Insight section. Return the complete updated note as valid Markdown.',
+    system: 'You are updating a wiki note with new information from a source. Integrate the new information naturally into the most appropriate section (Source Facts, Synthesis, or Connections). Never modify or add content to the ## Human Insight section. Respond only with valid JSON.',
     user: `Update the following wiki note by integrating new information from "${sourceTitle}".
 
 ${languageDirective(lang)}
+
+OUTPUT FORMAT (strict):
+Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"]}, "body": "## Source Facts\\n..."}
+"body" is the complete updated Markdown note body, starting at "## Source Facts". No YAML in the body, no code fences.
+Copy every frontmatter value from the existing note unchanged. The created/updated dates are managed by the system — do NOT include them.
+
+PRESERVATION (strict):
+- Every bullet currently under ## Source Facts MUST appear in your output verbatim and unmodified. You may add new bullets and group bullets under sub-labels, but never delete, merge, shorten, or rephrase an existing bullet.
+- Preserve all other existing content; only add to it.
 
 NEW INFORMATION:
 ${addition}
@@ -188,11 +202,14 @@ export function getRepairPrompt(noteContent, errors, lang = 'zh') {
     system: 'You are fixing schema violations in an Obsidian wiki note. Fix ONLY the listed violations. Do not add, remove, reorder, or rewrite any other content. Respond only with valid JSON.',
     user: `The following wiki note violates its schema.
 
+${languageDirective(lang)}
+
 VIOLATIONS:
 ${errors.map(e => `- ${e}`).join('\n')}
 
 Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
-{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"], "created": "YYYY-MM-DD", "updated": "YYYY-MM-DD"}, "body": "## Source Facts\\n..."}
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"]}, "body": "## Source Facts\\n..."}
+The created/updated dates are managed by the system — do NOT include them.
 
 NOTE:
 ${noteContent}`
@@ -236,7 +253,7 @@ Prioritized list of the most valuable improvements to make.
 
 After the report, append ONE fenced \`\`\`json block of machine-applicable operations derived from your Missing Links and Contradictions findings:
 {"ops": [{"op": "add_link", "from": "<note name>", "type": "extends|contradicts|requires|examples|related", "to": "<note name>"}]}
-- "from" and "to" MUST be note names copied verbatim from the ### headers above
+- "from" and "to" MUST be note names copied verbatim from the ### headers above — the exact header text, never a prose title from inside a note
 - Include only links you are confident about. If none, use {"ops": []}`
   };
 }

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateNote, answerQuestion, refineAnswer, formatNote, repairNote } from '../src/llm.js';
+import { generateNote, answerQuestion, refineAnswer, formatNote, repairNote, carryCreated } from '../src/llm.js';
 import { validateNote } from '../src/validator.js';
 
 const VALID_BODY = [
@@ -12,10 +12,12 @@ const VALID_BODY = [
   '## Human Insight'
 ].join('\n');
 
+// Dateless on purpose: the prompts no longer ask the model for created/updated —
+// renderNote stamps them in code.
 const VALID_JSON = JSON.stringify({
   frontmatter: {
     title: 'KV Cache Reuse', type: 'atomic', source: '', domain: 'ai', topic: 'llm',
-    tags: ['kv-cache', 'inference'], created: '2026-06-11', updated: '2026-06-11'
+    tags: ['kv-cache', 'inference']
   },
   body: VALID_BODY
 });
@@ -94,6 +96,7 @@ describe('verified generation', () => {
     assert.deepStrictEqual(calls[0].payload.response_format, { type: 'json_object' });
     assert.match(note, /^---\ntitle: KV Cache Reuse\ntype: atomic\n/);
     assert.match(note, /tags: \[kv-cache, inference\]/);
+    assert.match(note, /created: \d{4}-\d{2}-\d{2}/); // stamped in code, not by the model
     assert.deepStrictEqual(validateNote(note), []);
   });
 
@@ -107,7 +110,7 @@ describe('verified generation', () => {
 
   test('an invalid first reply triggers exactly one repair call carrying the violations', async () => {
     const invalid = JSON.stringify({
-      frontmatter: { title: 'X', type: 'atomic', source: '', domain: 'ai', topic: 'llm', tags: ['a'], created: '2026-06-11', updated: '2026-06-11' },
+      frontmatter: { title: 'X', type: 'atomic', source: '', domain: 'ai', topic: 'llm', tags: ['a'] },
       body: '## Source Facts\n- fact' // five sections missing
     });
     const { MockOpenAI, calls } = makeMock([invalid, VALID_JSON]);
@@ -132,6 +135,26 @@ describe('verified generation', () => {
     const result = await repairNote(config, { note: 'broken input' }, MockOpenAI);
     assert.strictEqual(calls.length, 1); // bounded: exactly one repair attempt
     assert.strictEqual(typeof result, 'string');
+  });
+
+  test('repair preserves the original created: date through the rewrite', async () => {
+    const dated = (await formatNote(config, { content: 'x' }, makeMock([VALID_JSON]).MockOpenAI))
+      .replace(/^created: .*$/m, 'created: 2024-01-01');
+    const broken = dated.replace('## Synthesis', '## Wrong Section');
+    const { MockOpenAI } = makeMock([VALID_JSON]); // repair reply carries no dates
+    const result = await repairNote(config, { note: broken }, MockOpenAI);
+    assert.match(result, /created: 2024-01-01/);
+  });
+});
+
+describe('carryCreated', () => {
+  test('restores the source created: into the note, no-op without one', () => {
+    assert.match(
+      carryCreated('---\ncreated: 2024-01-01\n---', '---\ncreated: 2026-06-11\n---'),
+      /created: 2024-01-01/
+    );
+    const note = '---\ncreated: 2026-06-11\n---';
+    assert.strictEqual(carryCreated('no frontmatter here', note), note);
   });
 });
 
