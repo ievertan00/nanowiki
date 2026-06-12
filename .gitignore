@@ -6,6 +6,7 @@ node_modules/
 # Ignoring project documentation as requested.
 docs/
 social-card-nanowiki/
+.agents/
 
 # Local Environment & Secrets
 # Ignoring sensitive environment-specific variables and secrets.
