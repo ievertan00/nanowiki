@@ -16,6 +16,8 @@ Inspired by [Andrej Karpathy's vision for an "llm-wiki"](https://gist.github.com
 
 > You never (or rarely) write the wiki yourself — **the LLM writes and maintains all of it.** You are in charge of sourcing, exploration, and asking the right questions.
 
+We talk to LLMs every day, but those conversations are scattered — across browser tabs, desktop apps, and phones. They fade as time goes by, or stay where they happened and are never recalled. Nanowiki turns them into durable knowledge assets: every question becomes a permanent, linked, searchable note in a local vault you own, available at any time.
+
 - **Obsidian is the IDE.** You read, navigate, and annotate the vault there.
 - **The LLM is the programmer.** It writes every note, draws every link, and keeps the indexes fresh.
 - **The wiki is the codebase.** Plain Markdown files — local, readable, greppable, and yours forever.
@@ -56,14 +58,14 @@ Every note shares one schema: YAML frontmatter for organization, fixed sections 
 
 ```markdown
 ---
-title: Scaled Dot-Product Attention
+title: 注意力机制原理与跨领域应用
 type: atomic # or literature (for source summaries)
 source: # filename/title of the source, for literature notes
 domain: ai
-topic: transformers
-tags: [attention, transformer, llm-inference]
-created: 2026-06-11
-updated: 2026-06-11
+topic: attention
+tags: [attention, transformer, cross-domain]
+created: 2026-06-12
+updated: 2026-06-12
 ---
 
 ## Source Facts ← only what sources directly state, as bullets
@@ -97,27 +99,33 @@ There are four operations, available in both front ends (CLI: `wiki <cmd>`, skil
 
 ### The multi-round `ask` loop
 
-The core daily workflow is a **conversation with your own wiki**. Each answer ends with `Open Questions` — those become your next questions, and every round deepens and links the vault:
+`ask` is two LLM passes wrapped around an interactive refine loop:
+
+- **Pass 1 (answer)** — a near-empty system prompt asks the model to simply answer the question well: free-form, no schema in the way.
+- **Pass 2 (format)** — one final call reshapes the answer into the note schema, assigns domain/topic against the existing taxonomy, and links only to notes that already exist.
+
+Between the two passes you stay in the loop as long as you like. Each follow-up revises the free-form answer in place, and nothing is saved until you finish — so the expensive format pass runs exactly once:
 
 ```
-1. wiki ask "What is speculative decoding?"
-        → a new note appears, linked into the existing graph
-2. Read it in Obsidian. Its Open Questions suggest what you don't know yet.
-3. wiki ask "How does the draft model in speculative decoding get chosen?"
-        → a second note, automatically linked to the first
-4. wiki ask "Does speculative decoding help with batch inference?"
-        → keep looping; the graph compounds
-5. wiki lint     ← periodically: merge duplicate domains, surface gaps
+wiki ask "<question>"
+  → pass 1 (answer)
+  → render answer to terminal
+  → "Any further question? [Y/n]"        (Enter or y/Y = continue; n/N = finish)
+      Y → prompt for follow-up ("Rewrite section 2 to mention KV-cache constraints…")
+        → refineAnswer() returns the complete updated answer → render → loop
+      N → save ONCE:
+          pass 2 (format, with pass-1 candidates) → note via saveNote
+            (collision guard, cleaning, dead-link capture),
+          final refined answer to sources/, taxonomy, log, MOC/index/WIKI regen
 ```
 
-You never organize anything. Domains, topics, links, MOCs, and the index all maintain themselves.
+The loop then continues across days: each saved note ends with `Open Questions`, which become your next `ask` — a **conversation with your own wiki** where every round deepens and links the graph. You never organize anything; domains, topics, links, MOCs, and the index all maintain themselves.
 
 ### Feeding it sources
 
 ```powershell
 wiki ingest attention-paper.md                 # bare name resolves under <vault>/sources/
 wiki ingest https://example.com/great-post    # URLs are fetched into sources/ first
-wiki ingest https://youtube.com/watch?v=...   # YouTube links become transcripts
 ```
 
 A single source may update many notes: the LLM extracts a summary plus targeted additions, writes a `literature` note, and integrates each addition into the existing note it belongs to. Updates that target a note which doesn't exist are skipped — never invented.
@@ -129,6 +137,14 @@ wiki rewrite rough-notes.md --type literature
 ```
 
 `<file>` resolves the same way for `rewrite` and `ingest`: a bare filename is looked up under `<vault>/sources/` first, then treated as a literal path.
+
+### How the vault maintains itself
+
+Three mechanisms keep the vault navigable and healthy without you organizing anything:
+
+- **Maps of Content (`moc/`)** — after every mutating command, the CLI regenerates `moc/<domain>.md` (notes grouped by topic), the full catalog `meta/index.md`, and the domains block of `WIKI.md` — all derived purely from frontmatter. These files are owned by the CLI; hand edits are overwritten.
+- **Operation log (`meta/log.md`)** — an append-only, grep-friendly record of every operation: notes created and updated, slug collisions deflected, per-target outcomes of ingest fan-outs. When you wonder "what changed and when," the answer is one search away.
+- **Lint (`wiki lint`)** — a periodic LLM health-check that consolidates duplicate domains and reports contradictions, orphan notes, thin notes, and missing links to `meta/lint-<date>.md`. Machine-applicable link fixes ship alongside the prose report as proposals; `--fix` applies the safe subset (typed links where both endpoints exist) in code — everything else stays a human decision.
 
 ## CLI Installation & Configuration
 
@@ -173,7 +189,7 @@ wiki ask "What is attention?" --provider deepseek --lang en
 wiki rewrite draft.md --type literature
 ```
 
-**3. Open the vault in Obsidian** — point Obsidian at `WIKI_PATH` and read.
+**3. Open the vault in Obsidian (recommended) ** — point Obsidian at `WIKI_PATH` and read.
 
 The vault's `wiki-config.json` owns the live domain/topic taxonomy (the LLM grows it as it coins new domains) and can override language and provider settings per vault.
 
