@@ -49,6 +49,7 @@ export function buildCatalog(wikiPath) {
         domain: fm.domain || '',
         topic: fm.topic || '',
         tags: (fm.tags || '').replace(/[\[\]]/g, '').trim(),
+        aliases: (fm.aliases || '').replace(/[\[\]]/g, '').trim(),
         summary: synthesisSummary(content)
       };
     });
@@ -64,7 +65,8 @@ export function selectCandidates(catalog, query, k = 40) {
   if (qTokens.size === 0) return catalog.slice(0, k);
 
   const docs = catalog.map(n => ({
-    title: new Set(tokenize(`${n.title} ${n.slug}`)),
+    // aliases are alternative names for the note, so they score like the title
+    title: new Set(tokenize(`${n.title} ${n.slug} ${n.aliases || ''}`)),
     meta: new Set(tokenize(`${n.domain} ${n.topic} ${n.tags}`)),
     summary: new Set(tokenize(n.summary))
   }));

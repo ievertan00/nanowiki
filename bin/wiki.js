@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { loadConfig, saveTaxonomy } from '../src/config.js';
 import { initVault, appendLog } from '../src/vault.js';
 import { buildCatalog, selectCandidates } from '../src/retrieve.js';
-import { generateNote, answerQuestion, refineAnswer, formatNote } from '../src/llm.js';
+import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
-import { lintWiki, consolidateDomains, applyLintOps } from '../src/lint.js';
+import { lintWiki, consolidateDomains, applyLintOps, checkCitations } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
-import { updateMOC, updateIndex, updateWikiDomains, updateQuestions } from '../src/meta.js';
+import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, hashSource, findStaleSources, renderStaleSources } from '../src/meta.js';
 
 const program = new Command();
 let config;
@@ -111,6 +110,36 @@ program
     updateWikiDomains(config.wikiPath);
   });
 
+// ── query ─────────────────────────────────────────────────────────────────────
+
+// Full note contents go into the prompt (unlike ask's catalog lines), so the
+// retrieval cap is tighter than the format pass's 40 to stay inside one context.
+const QUERY_NOTE_LIMIT = 12;
+
+// Closed-world counterpart of `ask`: answer FROM the vault instead of into it.
+// Read-only by design — no note, no source, no taxonomy/MOC churn, no log entry.
+program
+  .command('query')
+  .argument('<question>')
+  .description('Answer a question from the existing notes only, with [[note]] citations')
+  .action(async (question) => {
+    const options = program.opts();
+    const candidates = selectCandidates(buildCatalog(config.wikiPath), question, QUERY_NOTE_LIMIT);
+    if (candidates.length === 0) {
+      console.log(chalk.yellow('No notes relevant to this question were found in the vault.'));
+      return;
+    }
+
+    console.log(chalk.blue(`Answering from ${candidates.length} note(s)... (provider: ${options.provider})`));
+    const notesDir = path.join(config.wikiPath, 'notes');
+    const notes = candidates.map(c => ({
+      slug: c.slug,
+      content: fs.readFileSync(path.join(notesDir, `${c.slug}.md`), 'utf8')
+    }));
+    const answer = await queryWiki(config, { question, notes, providerName: options.provider });
+    console.log('\n' + answer);
+  });
+
 // ── rewrite ───────────────────────────────────────────────────────────────────
 
 program
@@ -167,40 +196,57 @@ program
 
     // A URL is fetched via a domain adapter and saved into sources/; otherwise
     // resolve a bare filename against sources/, then the literal path (cwd/absolute).
-    let sourceContent, sourceTitle;
+    let sourceContent, sourceTitle, fetched = null, localFile = null;
     if (isUrl(arg)) {
       console.log(chalk.blue(`Fetching ${arg}...`));
-      let fetched;
       try {
         fetched = await fetchUrlSource(arg);
       } catch (e) {
         console.error(chalk.red(e.message));
         process.exit(1);
       }
-      const savedSource = saveFetchedSource(config.wikiPath, fetched);
       sourceContent = fetched.content;
       sourceTitle = fetched.title;
-      console.log(chalk.green(`Source saved: ${savedSource}`));
     } else {
       const inSources = path.join(config.wikiPath, 'sources', arg);
-      const file = fs.existsSync(inSources) ? inSources : arg;
-      if (!fs.existsSync(file)) {
+      localFile = fs.existsSync(inSources) ? inSources : arg;
+      if (!fs.existsSync(localFile)) {
         console.error(chalk.red(`File not found: ${arg} (looked in ${path.join(config.wikiPath, 'sources')} and as a literal path)`));
         process.exit(1);
       }
-      sourceContent = fs.readFileSync(file, 'utf8');
-      sourceTitle = path.basename(file, path.extname(file));
+      sourceContent = fs.readFileSync(localFile, 'utf8');
+      sourceTitle = path.basename(localFile, path.extname(localFile));
     }
 
     // Idempotency ledger: the same source content is never ingested twice, since
     // re-running the fan-out would duplicate additions in the target notes.
-    const sourceHash = crypto.createHash('sha256').update(sourceContent).digest('hex').slice(0, 16);
+    const sourceHash = hashSource(sourceContent);
     const ledgerPath = path.join(config.wikiPath, 'meta', 'ingested.json');
     const ledger = fs.existsSync(ledgerPath) ? JSON.parse(fs.readFileSync(ledgerPath, 'utf8')) : {};
     if (ledger[sourceHash] && !cmdOptions.force) {
       console.log(chalk.yellow(`Already ingested on ${ledger[sourceHash].date} as "${ledger[sourceHash].title}". Use --force to re-ingest.`));
       return;
     }
+
+    // Pin a copy of the source in sources/ — the anchor that ^[citation] markers
+    // and staleness tracking point at. Done after the ledger check so a skipped
+    // re-ingest never rewrites the stored copy (a re-fetch with a fresh `fetched:`
+    // date would otherwise look like a stale source).
+    let sourceFile;
+    const sourcesDir = path.join(config.wikiPath, 'sources');
+    if (fetched) {
+      const savedSource = saveFetchedSource(config.wikiPath, fetched);
+      sourceFile = path.basename(savedSource);
+      console.log(chalk.green(`Source saved: ${savedSource}`));
+    } else if (path.resolve(path.dirname(localFile)).toLowerCase() === path.resolve(sourcesDir).toLowerCase()) {
+      sourceFile = path.basename(localFile);
+    } else {
+      const ext = path.extname(localFile);
+      sourceFile = path.basename(localFile, ext).replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + ext;
+      fs.copyFileSync(localFile, path.join(sourcesDir, sourceFile));
+      console.log(chalk.green(`Source copied: ${path.join(sourcesDir, sourceFile)}`));
+    }
+    const sourceSlug = path.basename(sourceFile, path.extname(sourceFile));
 
     console.log(chalk.blue(`Ingesting "${sourceTitle}"... (provider: ${options.provider})`));
     const candidates = selectCandidates(buildCatalog(config.wikiPath), sourceContent);
@@ -225,6 +271,7 @@ program
     // and the fan-out continues, so a mid-run error never leaves silent gaps.
     let updatedCount = 0;
     const outcomes = [];
+    const derivedNotes = [path.basename(savedPath, '.md')];
     for (const { note, addition } of updates) {
       const notePath = slugToPath(config.wikiPath, note);
       if (!fs.existsSync(notePath)) {
@@ -239,6 +286,7 @@ program
           existingContent: existing,
           addition,
           sourceTitle,
+          sourceSlug,
           providerName: options.provider
         });
         // Through saveNote so the update gets the same cleaning, dead-link capture,
@@ -246,6 +294,7 @@ program
         // title `note` resolves back to notePath).
         saveNote(config.wikiPath, { title: note, content: restoreHumanInsight(updated, humanInsight), allowOverwrite: true });
         updatedCount++;
+        derivedNotes.push(path.basename(notePath, '.md'));
         outcomes.push(preserved ? `updated: ${note}` : `updated: ${note} (fallback append — rewrite dropped existing facts)`);
         console.log(chalk.green(`  Updated: ${note}${preserved ? '' : ' (fallback append)'}`));
       } catch (e) {
@@ -254,7 +303,16 @@ program
       }
     }
 
-    ledger[sourceHash] = { title: sourceTitle, date: new Date().toISOString().slice(0, 10) };
+    // `file`/`fileHash` anchor staleness detection (findStaleSources) to the vault
+    // copy; `notes` records what this source produced, so a stale source can name
+    // the notes that need refreshing.
+    ledger[sourceHash] = {
+      title: sourceTitle,
+      date: new Date().toISOString().slice(0, 10),
+      file: sourceFile,
+      fileHash: hashSource(fs.readFileSync(path.join(sourcesDir, sourceFile), 'utf8')),
+      notes: derivedNotes
+    };
     fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
 
     appendLog(config.wikiPath, 'ingest', sourceTitle, outcomes);
@@ -327,8 +385,18 @@ program
     updateIndex(config.wikiPath);
     updateWikiDomains(config.wikiPath);
 
+    // Deterministic checks (no LLM): citation markers that no longer resolve to a
+    // file in sources/, and ingested sources whose file changed since ingestion.
+    let staticChecks = '';
+    const broken = checkCitations(config.wikiPath);
+    if (broken.length) {
+      staticChecks += `## Broken Source Citations\n\n${broken.map(b => `- [[${b.note}]] cites \`^[${b.marker}]\` — no matching file in sources/`).join('\n')}\n\n`;
+    }
+    const staleSection = renderStaleSources(findStaleSources(config.wikiPath));
+    if (staleSection) staticChecks += `${staleSection}\n`;
+
     const { report: lintReport, ops } = await lintWiki(config, { providerName: options.provider });
-    let report = `${consolidation}\n${lintReport}`;
+    let report = `${staticChecks}${consolidation}\n${lintReport}`;
 
     const date = new Date().toISOString().slice(0, 10);
     if (cmdOptions.fix && ops.length) {

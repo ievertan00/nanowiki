@@ -72,6 +72,19 @@ describe('saveNote', () => {
     assert.match(ledger, new RegExp(`\\| ${TODAY} \\| No Such Note \\| requires \\| Linker \\|`));
   });
 
+  test('links written against a frontmatter alias resolve and are not stripped', () => {
+    const aliased = `---\ntitle: 键值缓存\ntype: atomic\naliases: [KV Cache, 缓存复用]\nupdated: 2020-01-01\n---\n\n## Source Facts\n\nBody.\n`;
+    saveNote(vault, { title: '键值缓存', content: aliased });
+
+    const body = '## Connections\nextends:: [[KV Cache]]\nrelated:: [[缓存复用]]';
+    const { path: saved } = saveNote(vault, { title: 'Linker', content: noteContent({ body }) });
+
+    const written = fs.readFileSync(saved, 'utf8');
+    assert.match(written, /extends:: \[\[KV Cache\]\]/);
+    assert.match(written, /related:: \[\[缓存复用\]\]/);
+    assert.ok(!fs.existsSync(path.join(vault, 'meta', 'wanted-notes.md')));
+  });
+
   test('wanted-notes rows are deduped and pruned once the target exists', () => {
     const body = '## Connections\nextends:: [[Wanted Concept]]';
     saveNote(vault, { title: 'Wanter', content: noteContent({ body }) });

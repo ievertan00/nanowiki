@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, parseFrontmatter } from '../src/meta.js';
+import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, parseFrontmatter, hashSource, findStaleSources } from '../src/meta.js';
 
 function writeNote(dir, slug, { title = slug, domain = 'ai', topic = 'llm', openQuestions = [] } = {}) {
   const oq = openQuestions.length ? openQuestions.map(q => `- ${q}`).join('\n') : '';
@@ -88,5 +88,67 @@ describe('derived files', () => {
     assert.doesNotMatch(md, /none-note/); // "none" placeholders are filtered
     assert.match(md, /## Wanted Notes/);
     assert.match(md, /- Speculative Decoding \(extends, wanted by \[\[kv-cache\]\]\)/);
+  });
+
+  test('updateQuestions surfaces stale sources as a worklist section', () => {
+    fs.mkdirSync(path.join(vault, 'sources'));
+    fs.writeFileSync(path.join(vault, 'sources', 'paper.md'), 'edited content');
+    fs.writeFileSync(path.join(vault, 'meta', 'ingested.json'), JSON.stringify({
+      abc: { title: 'paper', date: '2026-01-01', file: 'paper.md', fileHash: hashSource('original content'), notes: ['kv-cache'] }
+    }));
+
+    const md = updateQuestions(vault);
+    assert.match(md, /## Stale Sources/);
+    assert.match(md, /- paper\.md — changed since ingested \(2026-01-01\); derived notes: \[\[kv-cache\]\]/);
+  });
+});
+
+describe('findStaleSources', () => {
+  let vault;
+
+  beforeEach(() => {
+    vault = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-test-stale-'));
+    ['meta', 'sources'].forEach(d => fs.mkdirSync(path.join(vault, d)));
+  });
+
+  afterEach(() => {
+    fs.rmSync(vault, { recursive: true, force: true });
+  });
+
+  const writeLedger = (entries) =>
+    fs.writeFileSync(path.join(vault, 'meta', 'ingested.json'), JSON.stringify(entries));
+
+  test('an unchanged source is fresh', () => {
+    fs.writeFileSync(path.join(vault, 'sources', 'paper.md'), 'same content');
+    writeLedger({ h1: { title: 'paper', date: '2026-01-01', file: 'paper.md', fileHash: hashSource('same content'), notes: ['n'] } });
+    assert.deepStrictEqual(findStaleSources(vault), []);
+  });
+
+  test('a modified source is stale, a deleted one is missing', () => {
+    fs.writeFileSync(path.join(vault, 'sources', 'paper.md'), 'edited');
+    writeLedger({
+      h1: { title: 'paper', date: '2026-01-01', file: 'paper.md', fileHash: hashSource('original'), notes: ['n1', 'n2'] },
+      h2: { title: 'gone', date: '2026-02-01', file: 'gone.md', fileHash: hashSource('x'), notes: [] }
+    });
+    assert.deepStrictEqual(findStaleSources(vault), [
+      { file: 'paper.md', status: 'stale', date: '2026-01-01', notes: ['n1', 'n2'] },
+      { file: 'gone.md', status: 'missing', date: '2026-02-01', notes: [] }
+    ]);
+  });
+
+  test('a re-ingested source is fresh when any entry matches the current bytes', () => {
+    fs.writeFileSync(path.join(vault, 'sources', 'paper.md'), 'v2');
+    writeLedger({
+      h1: { title: 'paper', date: '2026-01-01', file: 'paper.md', fileHash: hashSource('v1'), notes: ['n'] },
+      h2: { title: 'paper', date: '2026-03-01', file: 'paper.md', fileHash: hashSource('v2'), notes: ['n'] }
+    });
+    assert.deepStrictEqual(findStaleSources(vault), []);
+  });
+
+  test('legacy ledger entries without file/fileHash are skipped, as is a missing ledger', () => {
+    writeLedger({ h1: { title: 'old', date: '2025-01-01' } });
+    assert.deepStrictEqual(findStaleSources(vault), []);
+    fs.rmSync(path.join(vault, 'meta', 'ingested.json'));
+    assert.deepStrictEqual(findStaleSources(vault), []);
   });
 });

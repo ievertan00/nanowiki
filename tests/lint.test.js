@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { extractLintOps, applyLintOps, findOrphans } from '../src/lint.js';
+import { extractLintOps, applyLintOps, findOrphans, checkCitations } from '../src/lint.js';
 
 function noteWith(connections = '') {
   return [
@@ -77,5 +77,45 @@ describe('findOrphans', () => {
     } finally {
       fs.rmSync(vault, { recursive: true, force: true });
     }
+  });
+
+  test('a note linked only through its alias is not an orphan', () => {
+    const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-test-orphan-'));
+    fs.mkdirSync(path.join(vault, 'notes'));
+    fs.writeFileSync(path.join(vault, 'notes', 'a.md'), noteWith('related:: [[KV Cache]]'));
+    fs.writeFileSync(path.join(vault, 'notes', 'b.md'),
+      noteWith().replace('tags: [t]', 'tags: [t]\naliases: [KV Cache]'));
+    try {
+      assert.deepStrictEqual(findOrphans(vault), ['a']); // b is reached via its alias
+    } finally {
+      fs.rmSync(vault, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('checkCitations', () => {
+  let vault;
+
+  beforeEach(() => {
+    vault = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-test-cite-'));
+    ['notes', 'sources'].forEach(d => fs.mkdirSync(path.join(vault, d)));
+  });
+
+  afterEach(() => {
+    fs.rmSync(vault, { recursive: true, force: true });
+  });
+
+  test('resolves markers against sources/ (any extension, normalized) and reports the broken ones', () => {
+    fs.writeFileSync(path.join(vault, 'sources', 'Attention-Paper.md'), 'src');
+    fs.writeFileSync(path.join(vault, 'sources', 'my notes.txt'), 'src');
+    fs.writeFileSync(path.join(vault, 'notes', 'a.md'),
+      noteWith().replace('- f', '- f ^[Attention-Paper]\n- g ^[my-notes]\n- h ^[gone-source]'));
+
+    assert.deepStrictEqual(checkCitations(vault), [{ note: 'a', marker: 'gone-source' }]);
+  });
+
+  test('returns [] when there are no markers', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'a.md'), noteWith());
+    assert.deepStrictEqual(checkCitations(vault), []);
   });
 });

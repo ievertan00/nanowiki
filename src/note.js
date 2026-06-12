@@ -15,13 +15,23 @@ function cleanContent(content) {
   return c;
 }
 
+// Every name a [[link]] can resolve to: the filename slug of each note, plus its
+// frontmatter `aliases` (how Obsidian resolves [[Alias]] too) — so a link written
+// against a note's other-language name or abbreviation isn't a dead link.
 function listNoteSlugs(notesDir) {
-  if (!fs.existsSync(notesDir)) return new Set();
-  return new Set(
-    fs.readdirSync(notesDir)
-      .filter(f => f.endsWith('.md'))
-      .map(f => normalize(path.basename(f, '.md')))
-  );
+  const slugs = new Set();
+  if (!fs.existsSync(notesDir)) return slugs;
+  for (const f of fs.readdirSync(notesDir).filter(f => f.endsWith('.md'))) {
+    slugs.add(normalize(path.basename(f, '.md')));
+    const fm = fs.readFileSync(path.join(notesDir, f), 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    const aliases = fm?.[1].match(/^aliases:\s*(.+)$/m)?.[1];
+    if (!aliases) continue;
+    for (const a of aliases.replace(/^\[|\]$/g, '').split(',')) {
+      const n = normalize(a.replace(/^\s*['"]|['"]\s*$/g, ''));
+      if (n) slugs.add(n);
+    }
+  }
+  return slugs;
 }
 
 // Strips typed links whose target note doesn't exist. The stripped links are

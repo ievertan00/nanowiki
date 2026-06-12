@@ -5,6 +5,7 @@ node_modules/
 # Documentation
 # Ignoring project documentation as requested.
 docs/
+social-card-nanowiki/
 
 # Local Environment & Secrets
 # Ignoring sensitive environment-specific variables and secrets.

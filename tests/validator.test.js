@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateNote, lostSourceFacts } from '../src/validator.js';
+import { validateNote, lostSourceFacts, syncSourceMarkers } from '../src/validator.js';
 
 const VALID = `---
 title: KV Cache Reuse
@@ -97,5 +97,53 @@ describe('lostSourceFacts', () => {
 
   test('returns [] when the original has no Source Facts section', () => {
     assert.deepStrictEqual(lostSourceFacts('## Synthesis\nS.', 'anything'), []);
+  });
+
+  test('a dropped citation marker does not count as a lost fact', () => {
+    const withMarker = '## Source Facts\n- Reuse cuts prefill cost ^[paper-2024]\n\n## Synthesis\nS.';
+    const without = '## Source Facts\n- Reuse cuts prefill cost\n\n## Synthesis\nS.';
+    assert.deepStrictEqual(lostSourceFacts(withMarker, without), []);
+  });
+});
+
+describe('syncSourceMarkers', () => {
+  const before = [
+    '## Source Facts',
+    '- old fact with marker ^[first-source]',
+    '- old fact without marker',
+    '',
+    '## Synthesis',
+    'S.'
+  ].join('\n');
+
+  test('stamps new bullets with the source slug, only inside Source Facts', () => {
+    const after = before
+      .replace('- old fact without marker', '- old fact without marker\n- a brand new fact')
+      .replace('S.', 'S.\n- a synthesis bullet');
+    const result = syncSourceMarkers(before, after, 'second-source');
+    assert.match(result, /- a brand new fact \^\[second-source\]/);
+    assert.match(result, /- old fact without marker\n/); // pre-existing bullet untouched
+    assert.match(result, /- a synthesis bullet\n?$/m); // other sections untouched
+    assert.doesNotMatch(result, /synthesis bullet \^\[/);
+  });
+
+  test('restores a marker the rewrite dropped', () => {
+    const after = before.replace(' ^[first-source]', '');
+    const result = syncSourceMarkers(before, after, 'second-source');
+    assert.match(result, /- old fact with marker \^\[first-source\]/);
+  });
+
+  test('without a source slug it only restores, never stamps', () => {
+    const after = before.replace('- old fact without marker', '- old fact without marker\n- a brand new fact');
+    const result = syncSourceMarkers(before, after, null);
+    assert.match(result, /- a brand new fact\n/);
+    assert.doesNotMatch(result, /brand new fact \^\[/);
+  });
+
+  test('never double-stamps a bullet that already carries a marker', () => {
+    const after = before.replace('- old fact without marker', '- old fact without marker\n- imported fact ^[other-source]');
+    const result = syncSourceMarkers(before, after, 'second-source');
+    assert.match(result, /- imported fact \^\[other-source\]\n/);
+    assert.doesNotMatch(result, /other-source\] \^\[second-source/);
   });
 });

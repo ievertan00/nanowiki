@@ -39,15 +39,48 @@ export function findOrphans(wikiPath) {
   const notesDir = path.join(wikiPath, 'notes');
   if (!fs.existsSync(notesDir)) return [];
   const files = fs.readdirSync(notesDir).filter(f => f.endsWith('.md'));
-  const allTitles = new Set(files.map(f => path.basename(f, '.md').toLowerCase()));
+  // slug -> every name an inbound [[link]] could use (the slug + its aliases)
+  const names = new Map();
   const linked = new Set();
   for (const file of files) {
     const content = fs.readFileSync(path.join(notesDir, file), 'utf8');
+    const slug = path.basename(file, '.md').toLowerCase();
+    const own = new Set([slug]);
+    const aliases = frontmatterBlock(content)?.[2].match(/^aliases:\s*(.+)$/m)?.[1];
+    for (const a of (aliases || '').replace(/^\[|\]$/g, '').split(',')) {
+      const n = a.trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+      if (n) own.add(n);
+    }
+    names.set(slug, own);
     for (const m of content.matchAll(/\[\[([^\]|]+)/g)) {
       linked.add(m[1].trim().toLowerCase());
     }
   }
-  return [...allTitles].filter(t => !linked.has(t));
+  return [...names.entries()]
+    .filter(([, own]) => ![...own].some(n => linked.has(n)))
+    .map(([slug]) => slug);
+}
+
+// Deterministic citation check (no LLM): every ^[name] marker in a note must
+// resolve to a file in sources/. Markers are stamped in code by ingest's fan-out
+// (see syncSourceMarkers); a broken one means the source file was renamed or
+// deleted after the fact it backs was written.
+export function checkCitations(wikiPath) {
+  const notesDir = path.join(wikiPath, 'notes');
+  if (!fs.existsSync(notesDir)) return [];
+  const sourcesDir = path.join(wikiPath, 'sources');
+  const norm = s => s.toLowerCase().replace(/[^\w一-鿿]+/g, '');
+  const sources = new Set(fs.existsSync(sourcesDir)
+    ? fs.readdirSync(sourcesDir).map(f => norm(path.basename(f, path.extname(f))))
+    : []);
+  const broken = [];
+  for (const f of fs.readdirSync(notesDir).filter(f => f.endsWith('.md'))) {
+    const content = fs.readFileSync(path.join(notesDir, f), 'utf8');
+    for (const m of content.matchAll(/\^\[([^\]]+)\]/g)) {
+      if (!sources.has(norm(m[1]))) broken.push({ note: path.basename(f, '.md'), marker: m[1] });
+    }
+  }
+  return broken;
 }
 
 export async function consolidateDomains(config, { providerName = 'default' }, OpenAIClient = OpenAI) {

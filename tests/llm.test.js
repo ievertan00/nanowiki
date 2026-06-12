@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateNote, answerQuestion, refineAnswer, formatNote, repairNote, carryCreated } from '../src/llm.js';
+import { generateNote, answerQuestion, refineAnswer, formatNote, repairNote, carryCreated, carryAliases, queryWiki } from '../src/llm.js';
 import { validateNote } from '../src/validator.js';
 
 const VALID_BODY = [
@@ -100,6 +100,21 @@ describe('verified generation', () => {
     assert.deepStrictEqual(validateNote(note), []);
   });
 
+  test('aliases render as a bracket list keeping their spaces; absent aliases render []', async () => {
+    const withAliases = JSON.stringify({
+      frontmatter: {
+        title: 'KV Cache Reuse', type: 'atomic', source: '', domain: 'ai', topic: 'llm',
+        tags: ['kv-cache'], aliases: ['KV Cache Reuse', '键值缓存']
+      },
+      body: VALID_BODY
+    });
+    const note = await formatNote(config, { content: 'x' }, makeMock([withAliases]).MockOpenAI);
+    assert.match(note, /^aliases: \[KV Cache Reuse, 键值缓存\]$/m);
+
+    const bare = await formatNote(config, { content: 'x' }, makeMock([VALID_JSON]).MockOpenAI);
+    assert.match(bare, /^aliases: \[\]$/m);
+  });
+
   test('tags with spaces are kebab-cased during rendering, not left for repair', async () => {
     const spacedTags = VALID_JSON.replace('"kv-cache"', '"kv cache"');
     const { MockOpenAI, calls } = makeMock([spacedTags]);
@@ -158,12 +173,41 @@ describe('carryCreated', () => {
   });
 });
 
+describe('carryAliases', () => {
+  test('restores aliases a rewrite dropped, but never overwrites a non-empty list', () => {
+    assert.match(
+      carryAliases('---\naliases: [KV Cache]\n---', '---\naliases: []\n---'),
+      /aliases: \[KV Cache\]/
+    );
+    const kept = '---\naliases: [New Name]\n---';
+    assert.strictEqual(carryAliases('---\naliases: [KV Cache]\n---', kept), kept);
+  });
+
+  test('no-op when the existing note has no aliases', () => {
+    const note = '---\naliases: []\n---';
+    assert.strictEqual(carryAliases('---\ntitle: x\n---', note), note);
+    assert.strictEqual(carryAliases('---\naliases: []\n---', note), note);
+  });
+});
+
 describe('interactive ask pieces', () => {
   test('answerQuestion sends the bare content prompt', async () => {
     const { MockOpenAI, calls } = makeMock(['the answer']);
     const answer = await answerQuestion(config, { question: 'Why?' }, MockOpenAI);
     assert.strictEqual(answer, 'the answer');
     assert.strictEqual(calls[0].payload.messages[1].content, 'Why?');
+  });
+
+  test('queryWiki sends the grounded prompt with full note contents, free-form reply', async () => {
+    const { MockOpenAI, calls } = makeMock(['grounded answer']);
+    const answer = await queryWiki(config, {
+      question: 'Why?',
+      notes: [{ slug: 'kv-cache', content: 'note body' }]
+    }, MockOpenAI);
+    assert.strictEqual(answer, 'grounded answer');
+    assert.match(calls[0].payload.messages[0].content, /ONLY the wiki notes provided/);
+    assert.match(calls[0].payload.messages[1].content, /### \[\[kv-cache\]\]\nnote body/);
+    assert.strictEqual(calls[0].payload.response_format, undefined); // not a JSON pass
   });
 
   test('refineAnswer threads the current answer and follow-up', async () => {

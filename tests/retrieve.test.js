@@ -43,6 +43,7 @@ describe('buildCatalog', () => {
       'domain: ai',
       'topic: llm-inference',
       'tags: [kv-cache, inference]',
+      'aliases: [键值缓存复用]',
       '---',
       '',
       '## Source Facts',
@@ -62,6 +63,7 @@ describe('buildCatalog', () => {
       domain: 'ai',
       topic: 'llm-inference',
       tags: 'kv-cache, inference',
+      aliases: '键值缓存复用',
       summary: 'Caching attention keys avoids recomputation.'
     });
   });
@@ -98,6 +100,16 @@ describe('selectCandidates', () => {
     assert.strictEqual(picked[0].slug, 'speculative-decoding');
     assert.strictEqual(picked[1].slug, 'inference-speed');
     assert.strictEqual(picked.length, 2); // fillers have no overlap — excluded
+  });
+
+  test('aliases score like the title', () => {
+    const catalog = [];
+    for (let i = 0; i < 50; i++) catalog.push(entry(`filler-${i}`));
+    catalog.push(entry('prompt-caching', { title: 'Prompt Caching', aliases: '提示词缓存' }));
+
+    const picked = selectCandidates(catalog, '提示词缓存的原理', 5);
+    assert.strictEqual(picked.length, 1);
+    assert.strictEqual(picked[0].slug, 'prompt-caching');
   });
 
   test('matches CJK queries via bigrams', () => {

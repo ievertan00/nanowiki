@@ -46,7 +46,7 @@ function languageDirective(lang) {
   return [
     `LANGUAGE: Write all prose, explanations, and frontmatter VALUES (the title, domain, topic and tags text) in ${name}.`,
     'Keep widely-used technical terms and proper nouns in their original English form — do NOT translate them (e.g. AI, LLM, Prompt, Token, Docker, API, GPU, Transformer, product and company names).',
-    'Keep these structural tokens EXACTLY in English, untranslated: the section headings (## Source Facts, ## Synthesis, ## Connections, ## Speculation, ## Open Questions, ## Human Insight), the typed-link keywords (extends::, contradicts::, requires::, examples::, related::), and every YAML frontmatter KEY (title:, type:, source:, domain:, topic:, tags:, created:, updated:).'
+    'Keep these structural tokens EXACTLY in English, untranslated: the section headings (## Source Facts, ## Synthesis, ## Connections, ## Speculation, ## Open Questions, ## Human Insight), the typed-link keywords (extends::, contradicts::, requires::, examples::, related::), and every YAML frontmatter KEY (title:, type:, source:, domain:, topic:, tags:, aliases:, created:, updated:).'
   ].join('\n');
 }
 
@@ -90,7 +90,7 @@ ${languageDirective(lang)}
 
 OUTPUT FORMAT (strict):
 Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
-{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"]}, "body": "## Source Facts\\n..."}
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"], "aliases": []}, "body": "## Source Facts\\n..."}
 "body" is the complete Markdown note body following the SKELETON below, starting at "## Source Facts". No YAML in the body, no code fences. The created/updated dates are managed by the system — do NOT include them.
 
 FRONTMATTER VALUES:
@@ -98,6 +98,7 @@ FRONTMATTER VALUES:
 - type and source: as specified in the user message
 - domain and topic: from the TAXONOMY in the user message
 - tags: JSON array of 3–6 tags. Each tag MUST be a single token with NO spaces (Obsidian rejects spaces in tags). Join multi-word concepts with hyphens in kebab-case and keep technical terms recognizable, e.g. ["prompt-caching", "kv-cache", "llm-inference"].
+- aliases: JSON array of 0–3 alternative names other notes might use to link to this one — the title's counterpart in the other language (the English name for a Chinese title, or vice versa) and a widely-used abbreviation or acronym, when they exist. Aliases may contain spaces. Use [] when none apply.
 
 LINKS (strict):
 - In the Connections section, ONLY link to notes from the EXISTING NOTES list in the user message, copying the [[name]] exactly as listed
@@ -129,6 +130,18 @@ export function getRefinePrompt(answer, followUp, lang = 'zh') {
   return {
     system: `You are a knowledgeable assistant revising a draft answer. Apply the user's follow-up: if it is a new question, answer it and merge the result in; if it is an instruction, revise accordingly. Preserve everything the follow-up does not affect. Return the complete updated answer as plain prose/Markdown — no YAML frontmatter, no wiki-note sections.\n${contentLangLine(lang)}`,
     user: `CURRENT ANSWER:\n${answer}\n\nFOLLOW-UP:\n${followUp}`
+  };
+}
+
+// Closed-world query: answer FROM the vault instead of into it — the inverse of
+// ask's open-world pass 1. The model sees full note contents and must ground
+// every claim in them. Free-form output: the answer is printed, never saved, so
+// no schema or link rules apply beyond citing the notes it drew from.
+export function getQueryPrompt(question, notes, lang = 'zh') {
+  const rendered = notes.map(n => `### [[${n.slug}]]\n${n.content}`).join('\n\n---\n\n');
+  return {
+    system: `You are a knowledge assistant answering questions from a personal wiki. Answer using ONLY the wiki notes provided — ground every claim in them and add no outside knowledge. Cite the notes you draw from with [[name]] wikilinks, copying each name exactly as it appears in the ### headers. If the notes do not contain enough information to answer, say so plainly instead of guessing.\n${contentLangLine(lang)}`,
+    user: `QUESTION:\n${question}\n\nWIKI NOTES:\n${rendered}`
   };
 }
 
@@ -179,12 +192,13 @@ ${languageDirective(lang)}
 
 OUTPUT FORMAT (strict):
 Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
-{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"]}, "body": "## Source Facts\\n..."}
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"], "aliases": []}, "body": "## Source Facts\\n..."}
 "body" is the complete updated Markdown note body, starting at "## Source Facts". No YAML in the body, no code fences.
 Copy every frontmatter value from the existing note unchanged. The created/updated dates are managed by the system — do NOT include them.
 
 PRESERVATION (strict):
 - Every bullet currently under ## Source Facts MUST appear in your output verbatim and unmodified. You may add new bullets and group bullets under sub-labels, but never delete, merge, shorten, or rephrase an existing bullet.
+- A bullet may end with a citation marker like ^[source-name] — that marker is part of the bullet; copy it verbatim.
 - Preserve all other existing content; only add to it.
 
 NEW INFORMATION:
@@ -208,7 +222,7 @@ VIOLATIONS:
 ${errors.map(e => `- ${e}`).join('\n')}
 
 Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
-{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"]}, "body": "## Source Facts\\n..."}
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"], "aliases": []}, "body": "## Source Facts\\n..."}
 The created/updated dates are managed by the system — do NOT include them.
 
 NOTE:

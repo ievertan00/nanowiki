@@ -19,6 +19,9 @@ node --test tests\note.test.js   # run a single test file
 wiki ask "<question>"         # answer (pass 1) -> interactive refine loop (TTY only) -> format+save (pass 2)
                               #   "Any further question? [Y/n]": Enter/y = refine the free-form answer, n = format and save once
                               #   non-TTY stdin/stdout (pipes, scripts) skips the loop entirely
+wiki query "<question>"       # closed-world counterpart of ask: answer FROM the existing notes only
+                              #   (top-12 by retrieval, full note contents in the prompt), grounded with
+                              #   [[note]] citations; read-only — writes nothing, not even a log entry
 wiki rewrite <file>           # reformat an existing file into the schema (single pass)
 wiki ingest <file|url>        # literature note + fan-out updates to existing notes
                               #   <file>: bare name resolves against <vault>/sources/, else a literal path

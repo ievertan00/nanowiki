@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 export function parseFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -80,6 +81,58 @@ export function updateWikiDomains(wikiPath) {
   fs.writeFileSync(wikiFile, content);
 }
 
+// One hash rule for the whole pipeline: ingest's idempotency ledger keys and the
+// per-file staleness hashes must agree, so both live here.
+export function hashSource(content) {
+  return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
+}
+
+// Staleness detection: `wiki ingest` records, per source-content hash, the vault
+// copy it read (`file` + `fileHash`) and the notes it produced. A source file
+// whose current bytes match no recorded fileHash has changed since it was last
+// ingested — the notes derived from it may be out of date. A missing file means
+// the source was deleted from under its notes. Entries without `file`/`fileHash`
+// predate this tracking and are skipped.
+export function findStaleSources(wikiPath) {
+  const ledgerPath = path.join(wikiPath, 'meta', 'ingested.json');
+  if (!fs.existsSync(ledgerPath)) return [];
+  let ledger;
+  try { ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8')); } catch { return []; }
+
+  // Re-ingests of an edited source add a second entry for the same file; the
+  // file is fresh if ANY entry matches its current content.
+  const byFile = new Map();
+  for (const entry of Object.values(ledger)) {
+    if (!entry || !entry.file || !entry.fileHash) continue;
+    if (!byFile.has(entry.file)) byFile.set(entry.file, []);
+    byFile.get(entry.file).push(entry);
+  }
+
+  const stale = [];
+  for (const [file, entries] of byFile) {
+    const latest = entries.reduce((a, b) => ((a.date || '') >= (b.date || '') ? a : b));
+    const fullPath = path.join(wikiPath, 'sources', file);
+    if (!fs.existsSync(fullPath)) {
+      stale.push({ file, status: 'missing', date: latest.date, notes: latest.notes || [] });
+      continue;
+    }
+    const current = hashSource(fs.readFileSync(fullPath, 'utf8'));
+    if (entries.some(e => e.fileHash === current)) continue;
+    stale.push({ file, status: 'stale', date: latest.date, notes: latest.notes || [] });
+  }
+  return stale;
+}
+
+export function renderStaleSources(stale) {
+  if (!stale.length) return '';
+  const rows = stale.map(s => {
+    const what = s.status === 'missing' ? 'source file deleted' : `changed since ingested (${s.date})`;
+    const notes = (s.notes || []).map(n => `[[${n}]]`).join(', ');
+    return `- ${s.file} — ${what}${notes ? `; derived notes: ${notes}` : ''}`;
+  });
+  return `## Stale Sources\n\nSources changed (or gone) since they were ingested — re-run \`wiki ingest <file> --force\` to refresh the derived notes:\n\n${rows.join('\n')}\n`;
+}
+
 // The vault generates its own next prompts: harvest every note's
 // ## Open Questions section (grouped by domain) plus the wanted-notes ledger
 // into meta/questions.md — a worklist to feed back into `wiki ask`.
@@ -119,6 +172,10 @@ export function updateQuestions(wikiPath) {
     }
     if (rows.length) md += `\n## Wanted Notes\n\nNotes that don't exist yet but other notes tried to link to:\n\n${rows.join('\n')}\n`;
   }
+
+  // Stale sources are open questions too: the answer is `wiki ingest --force`.
+  const staleSection = renderStaleSources(findStaleSources(wikiPath));
+  if (staleSection) md += `\n${staleSection}`;
 
   const metaDir = path.join(wikiPath, 'meta');
   if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir, { recursive: true });

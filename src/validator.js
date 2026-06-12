@@ -11,18 +11,54 @@ const REQUIRED_KEYS = ['title', 'type', 'domain', 'topic', 'tags', 'created', 'u
 // the prompt says "preserve all existing content exactly", but only code can
 // guarantee it. Returns the ## Source Facts bullets from `before` that no longer
 // appear (normalized) anywhere in `after` — empty array means nothing was lost.
+// Citation markers (^[source]) are stripped before comparing: a model that drops
+// a marker hasn't lost the fact, and syncSourceMarkers restores the marker anyway.
 export function lostSourceFacts(before, after) {
   const section = before.match(/^## Source Facts\s*\r?\n([\s\S]*?)(?=^## |\s*$(?![\s\S]))/m);
   if (!section) return [];
   const bullets = section[1].split(/\r?\n/)
     .map(l => l.match(/^\s*[-*]\s+(.*\S)/)?.[1])
     .filter(Boolean);
-  const normalize = s => s.toLowerCase().replace(/[^\w一-鿿]+/g, '');
+  const normalize = s => s.replace(/\^\[[^\]]*\]/g, '').toLowerCase().replace(/[^\w一-鿿]+/g, '');
   const haystack = normalize(after);
   return bullets.filter(b => {
     const needle = normalize(b);
     return needle && !haystack.includes(needle);
   });
+}
+
+// Citation markers are code's job, like dates: a ` ^[<source-name>]` suffix on a
+// Source Facts bullet ties the fact to its file in sources/ (lint verifies the
+// target exists). After a whole-note rewrite this re-tags deterministically:
+// bullets that existed before keep (or get back) their original marker, bullets
+// new to this update are stamped with `sourceSlug`. The model is never trusted
+// to carry markers — only to not delete the bullets themselves.
+export function syncSourceMarkers(before, after, sourceSlug = null) {
+  const MARKER = /\s*(\^\[[^\]]+\])\s*$/;
+  const bulletRe = /^(\s*[-*]\s+)(.*\S)\s*$/;
+  const normalize = s => s.replace(/\^\[[^\]]*\]/g, '').toLowerCase().replace(/[^\w一-鿿]+/g, '');
+
+  const prior = new Map(); // normalized bullet text -> its marker (or null)
+  const section = before.match(/^## Source Facts\s*\r?\n([\s\S]*?)(?=^## |\s*$(?![\s\S]))/m);
+  for (const line of (section?.[1] || '').split(/\r?\n/)) {
+    const b = line.match(bulletRe);
+    if (b) prior.set(normalize(b[2]), b[2].match(MARKER)?.[1] || null);
+  }
+
+  let inSection = false;
+  return after.split(/\r?\n/).map(line => {
+    if (/^## /.test(line)) { inSection = /^## Source Facts\s*$/.test(line); return line; }
+    if (!inSection) return line;
+    const b = line.match(bulletRe);
+    if (!b) return line;
+    const marker = b[2].match(MARKER)?.[1] || null;
+    const key = normalize(b[2]);
+    if (prior.has(key)) {
+      const original = prior.get(key);
+      return original && !marker ? `${b[1]}${b[2]} ${original}` : line;
+    }
+    return !marker && sourceSlug ? `${b[1]}${b[2]} ^[${sourceSlug}]` : line;
+  }).join('\n');
 }
 
 export function validateNote(content) {

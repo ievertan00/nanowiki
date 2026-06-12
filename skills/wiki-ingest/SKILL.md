@@ -87,6 +87,9 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      naturally into the most appropriate existing section (`Source Facts`, `Synthesis`,
      or `Connections`), **preserving all existing content**, bump `updated:` to today,
      restore the Human Insight body verbatim, and write it back.
+   - Append ` ^[<source-file-basename-without-extension>]` to every bullet you add to
+     `Source Facts` — the citation marker tying the fact to the file in `sources/` —
+     and copy every existing `^[...]` marker verbatim (see `note-schema.md` invariants).
 
 6. **Regenerate** derived files:
    ```powershell

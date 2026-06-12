@@ -94,4 +94,35 @@ describe('updateNote', () => {
     assert.match(content, /- original fact two/); // original note kept
     assert.match(content, /- new fact \(Source: Paper\)/); // addition appended
   });
+
+  test('with a sourceSlug, new Source Facts bullets are stamped with ^[slug] in code', async () => {
+    const { MockOpenAI } = makeMock([GOOD_REPLY]);
+    const { content, preserved } = await updateNote(config, {
+      existingContent: EXISTING, addition: 'new fact', sourceTitle: 'Paper', sourceSlug: 'Paper-2024'
+    }, MockOpenAI);
+
+    assert.strictEqual(preserved, true);
+    assert.match(content, /- new fact \(Source: Paper\) \^\[Paper-2024\]/);
+    assert.match(content, /- original fact one\n/); // pre-existing bullets not stamped
+    assert.doesNotMatch(content, /original fact one \^\[/);
+  });
+
+  test('the fallback append cites via ^[slug] when a sourceSlug is given', async () => {
+    const { MockOpenAI } = makeMock([LOSSY_REPLY]);
+    const { content, preserved } = await updateNote(config, {
+      existingContent: EXISTING, addition: 'new fact', sourceTitle: 'Paper', sourceSlug: 'Paper-2024'
+    }, MockOpenAI);
+
+    assert.strictEqual(preserved, false);
+    assert.match(content, /- new fact \^\[Paper-2024\]/);
+  });
+
+  test('aliases on the existing note survive a rewrite that omits them', async () => {
+    const aliased = EXISTING.replace('tags: [kv-cache]', 'tags: [kv-cache]\naliases: [键值缓存]');
+    const { MockOpenAI } = makeMock([GOOD_REPLY]); // reply carries no aliases
+    const { content } = await updateNote(config, {
+      existingContent: aliased, addition: 'new fact', sourceTitle: 'Paper'
+    }, MockOpenAI);
+    assert.match(content, /^aliases: \[键值缓存\]$/m);
+  });
 });

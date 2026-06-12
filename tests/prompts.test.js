@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { getContentPrompt, getFormatPrompt, getExtractionPrompt, getRefinePrompt, getNoteUpdatePrompt, getRepairPrompt } from '../src/prompts.js';
+import { getContentPrompt, getFormatPrompt, getExtractionPrompt, getRefinePrompt, getNoteUpdatePrompt, getRepairPrompt, getQueryPrompt } from '../src/prompts.js';
 
 describe('getContentPrompt', () => {
   test('passes the question through and sets the language line', () => {
@@ -53,6 +53,36 @@ describe('getFormatPrompt', () => {
     assert.match(user, /source: paper\.md/);
     assert.match(user, /ai: llm/);
   });
+
+  test('aliases are requested in the JSON shape and protected as a structural token', () => {
+    const { system } = getFormatPrompt('content', {}, [], null, null, 'zh');
+    assert.match(system, /"aliases": \[\]/);
+    assert.match(system, /- aliases: JSON array of 0–3 alternative names/);
+    assert.match(system, /tags:, aliases:, created:/); // stays an English YAML key under zh
+  });
+});
+
+describe('getQueryPrompt', () => {
+  test('grounds the answer in the provided notes with [[name]] citations', () => {
+    const { system, user } = getQueryPrompt('What is X?', [
+      { slug: 'kv-cache', content: '---\ntitle: KV\n---\n\n## Source Facts\n- f' },
+      { slug: '键值缓存', content: 'body' }
+    ], 'en');
+    assert.match(system, /ONLY the wiki notes provided/);
+    assert.match(system, /\[\[name\]\] wikilinks/);
+    assert.match(system, /say so plainly/);
+    assert.match(system, /Respond in English\./);
+    assert.match(user, /QUESTION:\nWhat is X\?/);
+    assert.match(user, /### \[\[kv-cache\]\]\n---\ntitle: KV/);
+    assert.match(user, /### \[\[键值缓存\]\]\nbody/);
+  });
+
+  test('free-form: no schema, no frontmatter rules', () => {
+    const { system } = getQueryPrompt('q', [{ slug: 'a', content: 'c' }], 'zh');
+    assert.doesNotMatch(system, /## Source Facts/);
+    assert.doesNotMatch(system, /frontmatter/i);
+    assert.match(system, /Simplified Chinese/);
+  });
 });
 
 describe('getExtractionPrompt', () => {
@@ -86,6 +116,7 @@ describe('getNoteUpdatePrompt', () => {
     assert.match(user, /\{"frontmatter":/);
     assert.match(user, /MUST appear in your output verbatim/);
     assert.match(user, /never delete, merge, shorten, or rephrase/);
+    assert.match(user, /citation marker like \^\[source-name\][^\n]*copy it verbatim/);
     assert.match(user, /do NOT include them/); // created/updated stay code-owned
     assert.match(user, /Keep these structural tokens EXACTLY in English/);
     assert.match(user, /NEW INFORMATION:\nnew info/);

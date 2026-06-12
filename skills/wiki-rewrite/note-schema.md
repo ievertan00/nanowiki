@@ -39,7 +39,7 @@ maintenance helper and Obsidian parse them by exact match):
 - Section headings: `## Source Facts`, `## Synthesis`, `## Connections`,
   `## Speculation`, `## Open Questions`, `## Human Insight`
 - Typed-link keywords: `extends::`, `contradicts::`, `requires::`, `examples::`, `related::`
-- YAML keys: `title:`, `type:`, `source:`, `domain:`, `topic:`, `tags:`, `created:`, `updated:`
+- YAML keys: `title:`, `type:`, `source:`, `domain:`, `topic:`, `tags:`, `aliases:`, `created:`, `updated:`
 
 ## Frontmatter
 
@@ -57,6 +57,9 @@ domain: <closest match from the taxonomy, or a new concise domain>
 topic: <closest match from the taxonomy, or a new concise topic>
 tags: [tag-a, tag-b, tag-c]   # 3–6 tags, each a SINGLE token with NO spaces,
                               # kebab-case, no quotes (Obsidian rejects spaces in tags)
+aliases: [<0–3 alternative names other notes might link by — the title's counterpart
+  in the other language (English name for a Chinese title, or vice versa) and a
+  widely-used abbreviation, when they exist; spaces allowed; [] when none>]
 created: <YYYY-MM-DD today>
 updated: <YYYY-MM-DD today>
 ---
@@ -110,8 +113,13 @@ preserved, so Chinese titles produce Chinese filenames. Save the note to
   leave it empty. When rewriting/updating an existing note, copy its existing Human
   Insight body back **verbatim**.
 - **No dead links.** In `## Connections`, only `[[link]]` to notes that **already
-  exist** in `notes/`. If none genuinely apply, leave Connections empty. Never invent
-  a link to a note that does not exist.
+  exist** in `notes/` — matched by filename **or** by a name in a note's `aliases:`.
+  If none genuinely apply, leave Connections empty. Never invent a link to a note
+  that does not exist.
+- **Citation markers are preserved verbatim.** A Source Facts bullet may end with a
+  `^[<source-name>]` marker tying the fact to a file in `sources/`. When rewriting or
+  updating a note, copy every existing marker unchanged with its bullet. When ingesting,
+  append ` ^[<source-file-basename>]` to each bullet you add to Source Facts.
 - **No code fences** around the note or its frontmatter. Output clean Markdown only.
 
 ## After writing — regenerate derived files
