@@ -11,6 +11,7 @@ import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki } fro
 import { ingestSource, updateNote } from '../src/ingest.js';
 import { lintWiki, consolidateDomains, applyLintOps, checkCitations } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
+import { syncSourceMarkers } from '../src/validator.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
 import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, hashSource, findStaleSources, renderStaleSources } from '../src/meta.js';
 
@@ -97,11 +98,17 @@ program
     const { domain, topic, title } = extractFrontmatter(note);
     const noteTitle = title || question.slice(0, 60);
 
-    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: note });
+    // The final refined answer is the unformatted counterpart of the note — pin
+    // it (not the pre-refinement original) in sources/ before the note is saved:
+    // it is the source the note's ^[citation] markers point at, so nothing the
+    // format pass drops is lost and every Source Facts bullet stays traceable.
+    const sourcePath = saveSource(config.wikiPath, { title: noteTitle, question, content: answer });
+    const sourceSlug = path.basename(sourcePath, '.md');
+
+    // Citation markers are code's job (see syncSourceMarkers): every Source
+    // Facts bullet of a fresh ask note is backed by the pass-1 answer above.
+    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: syncSourceMarkers('', note, sourceSlug) });
     if (renamed) warnCollision(savedPath, noteTitle);
-    // The final refined answer is the unformatted counterpart of the note — save
-    // it (not the pre-refinement original) so nothing the format pass drops is lost.
-    saveSource(config.wikiPath, { title: noteTitle, question, content: answer });
     saveTaxonomy(config.wikiPath, config, domain, topic);
     appendLog(config.wikiPath, 'ask', noteTitle);
     console.log(chalk.green(`Saved: ${savedPath}`));

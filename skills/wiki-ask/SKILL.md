@@ -42,13 +42,18 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
    - In `## Connections`, link **only** to notes from the existing-notes list. If none
      apply, leave it empty.
    - Add no information beyond what is in the pass-1 answer.
+   - End every `## Source Facts` bullet with the citation marker ` ^[<slug>]`, where
+     `<slug>` is the note slug from step 5: the pass-1 answer is the source of this
+     note, and step 6 saves it at `sources/<slug>.md` — the file those markers resolve
+     to.
 
 5. **Write the note.** Derive `title`/`domain`/`topic` from the frontmatter you just
    wrote (fall back to the question, truncated, if no title). Compute the slug and
    write `notes/<slug>.md`.
 
 6. **Save the source.** Write the raw pass-1 answer to `sources/<slug>.md` with this
-   header so the unformatted answer is never lost:
+   header, so the unformatted answer is never lost and the note's `^[<slug>]` citation
+   markers resolve to it:
    ```
    ---
    title: <noteTitle>

@@ -88,11 +88,12 @@ Two invariants are enforced **in code**, independent of the LLM:
 
 ## Workflows
 
-There are four operations, available in both front ends (CLI: `wiki <cmd>`, skill: `/wiki-<cmd>`):
+There are five operations, available in both front ends (CLI: `wiki <cmd>`, skill: `/wiki-<cmd>`):
 
 | Operation            | What it does                                                                           |
 | -------------------- | -------------------------------------------------------------------------------------- |
 | `ask "<question>"`   | Answer a question well, then format the answer into a new note.                        |
+| `query "<question>"` | Answer from the existing notes only, with `[[note]]` citations. Read-only.             |
 | `ingest <file\|url>` | Write a literature note for a source, then fan out updates into existing notes.        |
 | `rewrite <file>`     | Reformat a draft or rough file into the note schema (Human Insight preserved).         |
 | `lint`               | Health-check the vault: consolidate domains, find contradictions, orphans, thin notes. |
@@ -114,10 +115,14 @@ wiki ask "<question>"
       Y → prompt for follow-up ("Rewrite section 2 to mention KV-cache constraints…")
         → refineAnswer() returns the complete updated answer → render → loop
       N → save ONCE:
-          pass 2 (format, with pass-1 candidates) → note via saveNote
+          final refined answer to sources/<slug>.md — the note's source of record,
+          pass 2 (format, with pass-1 candidates) → Source Facts bullets stamped
+            ^[<slug>] in code, pointing at that source → note via saveNote
             (collision guard, cleaning, dead-link capture),
-          final refined answer to sources/, taxonomy, log, MOC/index/WIKI regen
+          taxonomy, log, MOC/index/WIKI regen
 ```
+
+The saved pass-1 answer is not just a backup: it is the **source** of the pass-2 note. Every `## Source Facts` bullet is stamped with a `^[<slug>]` citation marker (in code, never by the model) that resolves to that file in `sources/`, the same way `ingest` ties facts to the documents it reads — so `wiki lint`'s citation check covers ask notes too.
 
 The loop then continues across days: each saved note ends with `Open Questions`, which become your next `ask` — a **conversation with your own wiki** where every round deepens and links the graph. You never organize anything; domains, topics, links, MOCs, and the index all maintain themselves.
 
@@ -195,7 +200,7 @@ The vault's `wiki-config.json` owns the live domain/topic taxonomy (the LLM grow
 
 ## Skills
 
-The `skills/` folder ships the same four operations as **native agent skills** — `wiki-ask`, `wiki-rewrite`, `wiki-ingest`, `wiki-lint` — that run _inside_ a coding agent (Claude Code, Gemini CLI, and similar). The host agent is the generator, so **no provider or API key is needed**; the vault is the directory the agent was launched in.
+The `skills/` folder ships the same five operations as **native agent skills** — `wiki-ask`, `wiki-query`, `wiki-rewrite`, `wiki-ingest`, `wiki-lint` — that run _inside_ a coding agent (Claude Code, Gemini CLI, and similar). The host agent is the generator, so **no provider or API key is needed**; the vault is the directory the agent was launched in.
 
 **Quickest install — no clone needed:**
 
@@ -219,6 +224,7 @@ It targets `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI
 
 ```
 /wiki-ask "What is KV cache?"
+/wiki-query "What does my wiki say about attention?"
 /wiki-ingest paper.md
 /wiki-rewrite rough-notes.md
 /wiki-lint

@@ -140,6 +140,16 @@ describe('syncSourceMarkers', () => {
     assert.doesNotMatch(result, /brand new fact \^\[/);
   });
 
+  // The ask path: a fresh note has no prior version, so an empty `before`
+  // stamps every Source Facts bullet with the pass-1 answer's source slug.
+  test('with an empty before, stamps every Source Facts bullet (ask path)', () => {
+    const fresh = '## Source Facts\n- fact one\n- fact two ^[already-cited]\n\n## Synthesis\n- a synthesis bullet';
+    const result = syncSourceMarkers('', fresh, 'kv-cache-reuse');
+    assert.match(result, /- fact one \^\[kv-cache-reuse\]/);
+    assert.match(result, /- fact two \^\[already-cited\]\n/); // existing marker kept, not double-stamped
+    assert.doesNotMatch(result, /synthesis bullet \^\[/);
+  });
+
   test('never double-stamps a bullet that already carries a marker', () => {
     const after = before.replace('- old fact without marker', '- old fact without marker\n- imported fact ^[other-source]');
     const result = syncSourceMarkers(before, after, 'second-source');
