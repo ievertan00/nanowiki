@@ -97,6 +97,15 @@ function recordWantedNotes(wikiPath, fromSlug, stripped) {
   fs.writeFileSync(ledgerPath, LEDGER_HEADER + body + (body ? '\n' : ''));
 }
 
+// The authoritative note-naming rule: <domain>-<topic>-<title>, slugified with the
+// repo's CJK-aware rule. Returns null when domain or topic is missing so the caller
+// can fall back (saveNote -> title-only; renameToSchema -> skip + flag). Same slugify
+// as saveNote/saveSource here, bin/wiki.js (slugToPath), and lint.js (applyLintOps).
+export function schemaName({ domain, topic, title }) {
+  if (!domain || !topic) return null;
+  return `${domain}-${topic}-${title}`.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '');
+}
+
 export function saveSource(wikiPath, { title, question, content }) {
   const filename = title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + '.md';
   const fullPath = path.join(wikiPath, 'sources', filename);
@@ -121,15 +130,23 @@ export function saveFetchedSource(wikiPath, { title, url, content, sourceType = 
 // Operations whose job is overwriting (rewrite, ingest's note updates) pass
 // allowOverwrite: true; ask and ingest's literature note must never silently
 // replace an existing note (and its Human Insight), so they keep the default.
-export function saveNote(wikiPath, { title, content, allowOverwrite = false }) {
+export function saveNote(wikiPath, { title, content, allowOverwrite = false, slug = null }) {
   const notesDir = path.join(wikiPath, 'notes');
-  const slug = title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '');
-  let filename = slug + '.md';
+  // `slug` (an existing filename basename) pins the target verbatim — used by the
+  // in-place-overwrite callers (update, ingest fan-out, applyLintOps) so a re-save
+  // never recomputes/double-prefixes the name. New notes derive the schema name from
+  // the frontmatter domain/topic prefix + the title arg, falling back to title-only.
+  const domain = content.match(/^domain:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '');
+  const topic = content.match(/^topic:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '');
+  const base = slug != null
+    ? slug
+    : (schemaName({ domain, topic, title }) || title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, ''));
+  let filename = base + '.md';
   let renamed = false;
   if (!allowOverwrite && fs.existsSync(path.join(notesDir, filename))) {
     let n = 2;
-    while (fs.existsSync(path.join(notesDir, `${slug}-${n}.md`))) n++;
-    filename = `${slug}-${n}.md`;
+    while (fs.existsSync(path.join(notesDir, `${base}-${n}.md`))) n++;
+    filename = `${base}-${n}.md`;
     renamed = true;
   }
   const fullPath = path.join(notesDir, filename);
