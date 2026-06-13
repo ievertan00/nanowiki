@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { extractLintOps, applyLintOps, findOrphans, checkCitations } from '../src/lint.js';
+import { extractLintOps, applyLintOps, findOrphans, checkCitations, renameToSchema } from '../src/lint.js';
 
 function noteWith(connections = '') {
   return [
@@ -117,5 +117,74 @@ describe('checkCitations', () => {
   test('returns [] when there are no markers', () => {
     fs.writeFileSync(path.join(vault, 'notes', 'a.md'), noteWith());
     assert.deepStrictEqual(checkCitations(vault), []);
+  });
+});
+
+describe('renameToSchema', () => {
+  let vault;
+  const note = ({ domain, topic, title, body = '' }) => {
+    const fm = ['---', `title: ${title}`, 'type: atomic'];
+    if (domain) fm.push(`domain: ${domain}`);
+    if (topic) fm.push(`topic: ${topic}`);
+    fm.push('updated: 2026-01-01', '---', '', '## Source Facts', '- f', '',
+      '## Connections', body, '', '## Human Insight', '');
+    return fm.join('\n');
+  };
+
+  beforeEach(() => {
+    vault = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-test-rename-'));
+    ['notes', 'meta'].forEach(d => fs.mkdirSync(path.join(vault, d)));
+  });
+
+  afterEach(() => {
+    fs.rmSync(vault, { recursive: true, force: true });
+  });
+
+  test('renames an off-schema note and reports the change', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'Transformer.md'), note({ domain: 'AI', topic: 'architecture', title: 'Transformer' }));
+    const { renamed, flagged } = renameToSchema(vault);
+    assert.deepStrictEqual(renamed, [{ from: 'Transformer', to: 'AI-architecture-Transformer' }]);
+    assert.deepStrictEqual(flagged, []);
+    assert.ok(fs.existsSync(path.join(vault, 'notes', 'AI-architecture-Transformer.md')));
+    assert.ok(!fs.existsSync(path.join(vault, 'notes', 'Transformer.md')));
+  });
+
+  test('rewrites inbound links in both slug-form and title-form', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'old-note.md'), note({ domain: 'AI', topic: 'llm', title: 'old note' }));
+    fs.writeFileSync(path.join(vault, 'notes', 'b.md'), note({ domain: 'AI', topic: 'llm', title: 'b', body: 'related:: [[old-note]]\nextends:: [[Old Note]]' }));
+    renameToSchema(vault);
+    const bPath = path.join(vault, 'notes', 'AI-llm-b.md');
+    const content = fs.readFileSync(bPath, 'utf8');
+    assert.match(content, /related:: \[\[AI-llm-old-note\]\]/);
+    assert.match(content, /extends:: \[\[AI-llm-old-note\]\]/);
+  });
+
+  test('skips and flags notes missing domain or topic', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'Orphan.md'), note({ domain: 'AI', title: 'Orphan' }));
+    const { renamed, flagged } = renameToSchema(vault);
+    assert.deepStrictEqual(renamed, []);
+    assert.deepStrictEqual(flagged, ['Orphan']);
+    assert.ok(fs.existsSync(path.join(vault, 'notes', 'Orphan.md')));
+  });
+
+  test('suffixes on collision with a different existing note', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'AI-llm-x.md'), note({ domain: 'AI', topic: 'llm', title: 'x' }));
+    fs.writeFileSync(path.join(vault, 'notes', 'other.md'), note({ domain: 'AI', topic: 'llm', title: 'x' }));
+    const { renamed } = renameToSchema(vault);
+    assert.deepStrictEqual(renamed, [{ from: 'other', to: 'AI-llm-x-2' }]);
+  });
+
+  test('is idempotent: a conforming note is left untouched', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'AI-llm-Done.md'), note({ domain: 'AI', topic: 'llm', title: 'Done' }));
+    const { renamed, flagged } = renameToSchema(vault);
+    assert.deepStrictEqual(renamed, []);
+    assert.deepStrictEqual(flagged, []);
+  });
+
+  test('rewrites a note\'s link to itself when it is renamed', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'self.md'), note({ domain: 'AI', topic: 'llm', title: 'self', body: 'related:: [[self]]' }));
+    renameToSchema(vault);
+    const content = fs.readFileSync(path.join(vault, 'notes', 'AI-llm-self.md'), 'utf8');
+    assert.match(content, /related:: \[\[AI-llm-self\]\]/);
   });
 });

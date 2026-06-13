@@ -9,7 +9,7 @@ import { initVault, appendLog } from '../src/vault.js';
 import { buildCatalog, selectCandidates } from '../src/retrieve.js';
 import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki, synthesize } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
-import { lintWiki, consolidateDomains, applyLintOps, checkCitations } from '../src/lint.js';
+import { lintWiki, consolidateDomains, applyLintOps, checkCitations, renameToSchema } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
 import { syncSourceMarkers } from '../src/validator.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
@@ -415,6 +415,15 @@ program
     // Combine similar domains first, then regenerate derived files so the report
     // reflects the consolidated taxonomy.
     const consolidation = await consolidateDomains(config, { providerName: options.provider });
+
+    // Deterministic, code-only: enforce the <domain>-<topic>-<title> filename schema,
+    // rewriting inbound links. Runs after consolidation so canonical domains land in
+    // filenames, and before the regen so derived files reflect the new names.
+    const { renamed, flagged } = renameToSchema(config.wikiPath);
+    let schemaSection = '';
+    if (renamed.length) schemaSection += `## Schema Renames\n\n${renamed.map(r => `- \`${r.from}\` → \`${r.to}\``).join('\n')}\n\n`;
+    if (flagged.length) schemaSection += `## Off-Schema (needs domain/topic)\n\n${flagged.map(s => `- [[${s}]]`).join('\n')}\n\n`;
+
     updateMOC(config.wikiPath);
     updateIndex(config.wikiPath);
     updateWikiDomains(config.wikiPath);
@@ -430,7 +439,7 @@ program
     if (staleSection) staticChecks += `${staleSection}\n`;
 
     const { report: lintReport, ops } = await lintWiki(config, { providerName: options.provider });
-    let report = `${staticChecks}${consolidation}\n${lintReport}`;
+    let report = `${staticChecks}${schemaSection}${consolidation}\n${lintReport}`;
 
     const date = new Date().toISOString().slice(0, 10);
     if (cmdOptions.fix && ops.length) {
@@ -445,7 +454,10 @@ program
     const reportPath = path.join(config.wikiPath, 'meta', `lint-${date}.md`);
     fs.writeFileSync(reportPath, report);
 
-    appendLog(config.wikiPath, 'lint', date);
+    appendLog(config.wikiPath, 'lint', date, [
+      ...renamed.map(r => `renamed: ${r.from} -> ${r.to}`),
+      ...flagged.map(s => `off-schema: ${s}`)
+    ]);
     console.log(chalk.green(`Report saved: ${reportPath}`));
     console.log('\n' + report);
   });
