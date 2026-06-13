@@ -326,7 +326,7 @@ program
         // Through saveNote so the update gets the same cleaning, dead-link capture,
         // and `updated:` bump as a fresh note (slugs are slugify-idempotent, so the
         // title `note` resolves back to notePath).
-        saveNote(config.wikiPath, { title: note, content: restoreHumanInsight(updated, humanInsight), allowOverwrite: true });
+        saveNote(config.wikiPath, { title: note, content: restoreHumanInsight(updated, humanInsight), allowOverwrite: true, slug: path.basename(notePath, '.md') });
         updatedCount++;
         derivedNotes.push(path.basename(notePath, '.md'));
         outcomes.push(preserved ? `updated: ${note}` : `updated: ${note} (fallback append — rewrite dropped existing facts)`);
@@ -381,7 +381,7 @@ program
       sourceTitle: 'user addition',
       providerName: options.provider
     });
-    saveNote(config.wikiPath, { title: slug, content: restoreHumanInsight(content, humanInsight), allowOverwrite: true });
+    saveNote(config.wikiPath, { title: slug, content: restoreHumanInsight(content, humanInsight), allowOverwrite: true, slug });
     if (!preserved) console.warn(chalk.yellow('Rewrite dropped existing facts — the addition was appended verbatim instead.'));
 
     appendLog(config.wikiPath, 'update', slug, preserved ? [] : ['fallback append — rewrite dropped existing facts']);

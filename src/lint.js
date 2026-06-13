@@ -296,7 +296,7 @@ export function applyLintOps(wikiPath, ops) {
       results.push(`skipped: ${fromSlug} has no ## Connections section`);
       continue;
     }
-    saveNote(wikiPath, { title: fromSlug, content: updated, allowOverwrite: true });
+    saveNote(wikiPath, { title: fromSlug, content: updated, allowOverwrite: true, slug: fromSlug });
     results.push(`added: ${type}:: [[${toSlug}]] to ${fromSlug}`);
   }
   return results;
