@@ -44,7 +44,8 @@ describe('validateNote', () => {
   test('flags missing required fields and bad type', () => {
     const errors = validateNote(VALID.replace('domain: ai', 'domain:').replace('type: atomic', 'type: fleeting'));
     assert.ok(errors.some(e => e.includes('missing or empty: domain')));
-    assert.ok(errors.some(e => e.includes('type must be "atomic" or "literature"')));
+    assert.ok(errors.some(e => e.includes('type must be')));
+    assert.ok(errors.some(e => e.includes('fleeting')));
   });
 
   test('flags tags with whitespace', () => {
@@ -79,6 +80,58 @@ describe('validateNote', () => {
   test('flags a fenced note and a fence inside frontmatter', () => {
     assert.ok(validateNote('```markdown\n' + VALID + '\n```').some(e => e.includes('code fence')));
     assert.ok(validateNote(VALID.replace('title:', '```yaml\ntitle:')).some(e => e.includes('Frontmatter contains a code fence')));
+  });
+});
+
+const VALID_SYNTHESIS = `---
+title: How Caching Cuts Inference Cost
+type: synthesis
+source: how-caching-cuts-inference-cost
+domain: ai
+topic: llm-inference
+tags: [caching, inference]
+created: 2026-06-13
+updated: 2026-06-13
+---
+
+## Question
+How does caching reduce inference cost?
+
+## Answer
+Reusing keys cuts prefill, as [[kv-cache]] shows.
+
+## Connections
+related:: [[kv-cache]]
+
+## Open Questions
+
+## Human Insight
+`;
+
+describe('validateNote — synthesis type', () => {
+  test('a schema-conforming synthesis note has no violations', () => {
+    assert.deepStrictEqual(validateNote(VALID_SYNTHESIS), []);
+  });
+
+  test('the synthesis type is accepted by the type enum', () => {
+    assert.ok(!validateNote(VALID_SYNTHESIS).some(e => e.includes('type must be')));
+  });
+
+  test('a synthesis note is validated against the synthesis sections, not the atomic ones', () => {
+    // It has no ## Source Facts / ## Synthesis / ## Speculation — that must NOT flag.
+    const errors = validateNote(VALID_SYNTHESIS);
+    assert.ok(!errors.some(e => e.includes('Missing section: ## Source Facts')));
+    assert.ok(!errors.some(e => e.includes('Missing section: ## Synthesis')));
+  });
+
+  test('flags a missing synthesis section', () => {
+    const errors = validateNote(VALID_SYNTHESIS.replace('## Answer\nReusing keys cuts prefill, as [[kv-cache]] shows.\n\n', ''));
+    assert.ok(errors.some(e => e === 'Missing section: ## Answer'));
+  });
+
+  test('an atomic note still requires the six atomic sections', () => {
+    const errors = validateNote(VALID.replace('## Speculation\nMaybe.\n', ''));
+    assert.ok(errors.some(e => e === 'Missing section: ## Speculation'));
   });
 });
 

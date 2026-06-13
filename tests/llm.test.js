@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateNote, answerQuestion, refineAnswer, formatNote, repairNote, carryCreated, carryAliases, queryWiki } from '../src/llm.js';
+import { generateNote, answerQuestion, refineAnswer, formatNote, repairNote, carryCreated, carryAliases, queryWiki, synthesize } from '../src/llm.js';
 import { validateNote } from '../src/validator.js';
 
 const VALID_BODY = [
@@ -159,6 +159,55 @@ describe('verified generation', () => {
     const { MockOpenAI } = makeMock([VALID_JSON]); // repair reply carries no dates
     const result = await repairNote(config, { note: broken }, MockOpenAI);
     assert.match(result, /created: 2024-01-01/);
+  });
+});
+
+describe('synthesize', () => {
+  const SYNTH_FM = JSON.stringify({
+    title: 'How Caching Cuts Cost', domain: 'ai', topic: 'llm-inference',
+    tags: ['caching', 'inference'], aliases: []
+  });
+
+  test('one JSON frontmatter call, body assembled in code as type: synthesis', async () => {
+    const { MockOpenAI, calls } = makeMock([SYNTH_FM]);
+    const note = await synthesize(config, {
+      question: 'How does caching cut cost?',
+      answer: 'Reusing keys cuts prefill, see [[kv-cache]].'
+    }, MockOpenAI);
+
+    assert.strictEqual(calls.length, 1); // valid assembly → no repair call
+    assert.deepStrictEqual(calls[0].payload.response_format, { type: 'json_object' });
+    assert.match(note, /^---\ntitle: How Caching Cuts Cost\ntype: synthesis\n/);
+    assert.match(note, /created: \d{4}-\d{2}-\d{2}/);
+    assert.deepStrictEqual(validateNote(note), []);
+  });
+
+  test('preserves the answer verbatim and records the question', async () => {
+    const note = await synthesize(config, {
+      question: 'How does caching cut cost?',
+      answer: 'Reusing keys cuts prefill, see [[kv-cache]].'
+    }, makeMock([SYNTH_FM]).MockOpenAI);
+
+    assert.match(note, /## Question\nHow does caching cut cost\?/);
+    assert.match(note, /## Answer\nReusing keys cuts prefill, see \[\[kv-cache\]\]\./);
+  });
+
+  test('derives Connections from the [[links]] already in the answer, deduped', async () => {
+    const note = await synthesize(config, {
+      question: 'q',
+      answer: 'See [[kv-cache]] and [[attention]], and [[kv-cache]] again.'
+    }, makeMock([SYNTH_FM]).MockOpenAI);
+
+    const connections = note.match(/## Connections\n([\s\S]*?)\n\n## Open Questions/)[1];
+    assert.strictEqual(connections, 'related:: [[kv-cache]]\nrelated:: [[attention]]');
+  });
+
+  test('an answer with no links yields an empty Connections section but still validates', async () => {
+    const note = await synthesize(config, {
+      question: 'q', answer: 'A plain grounded answer with no wikilinks.'
+    }, makeMock([SYNTH_FM]).MockOpenAI);
+    assert.deepStrictEqual(validateNote(note), []);
+    assert.match(note, /## Connections\n\n## Open Questions/);
   });
 });
 

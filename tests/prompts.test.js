@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { getContentPrompt, getFormatPrompt, getExtractionPrompt, getRefinePrompt, getNoteUpdatePrompt, getRepairPrompt, getQueryPrompt } from '../src/prompts.js';
+import { getContentPrompt, getFormatPrompt, getExtractionPrompt, getRefinePrompt, getNoteUpdatePrompt, getRepairPrompt, getQueryPrompt, getSynthesisFrontmatterPrompt } from '../src/prompts.js';
 
 describe('getContentPrompt', () => {
   test('passes the question through and sets the language line', () => {
@@ -10,6 +10,28 @@ describe('getContentPrompt', () => {
 
     const en = getContentPrompt('What is attention?', 'en');
     assert.match(en.system, /Respond in English\./);
+  });
+});
+
+describe('getSynthesisFrontmatterPrompt', () => {
+  test('asks only for frontmatter JSON (no body), threading question, answer and taxonomy', () => {
+    const { system, user } = getSynthesisFrontmatterPrompt(
+      'How does caching cut cost?',
+      'Reusing keys cuts prefill.',
+      { ai: ['llm-inference'] },
+      'en'
+    );
+    // Frontmatter-only: it must NOT ask for a "body" the way getFormatPrompt does.
+    assert.doesNotMatch(system + user, /"body"/);
+    assert.match(system, /JSON/);
+    assert.match(user, /How does caching cut cost\?/);
+    assert.match(user, /Reusing keys cuts prefill\./);
+    assert.match(user, /llm-inference/); // taxonomy reaches the prompt
+  });
+
+  test('pins structural tokens to English via the language directive', () => {
+    const { system } = getSynthesisFrontmatterPrompt('q', 'a', {}, 'zh');
+    assert.match(system, /Keep these structural tokens EXACTLY in English/);
   });
 });
 

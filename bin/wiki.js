@@ -7,7 +7,7 @@ import readline from 'node:readline/promises';
 import { loadConfig, saveTaxonomy } from '../src/config.js';
 import { initVault, appendLog } from '../src/vault.js';
 import { buildCatalog, selectCandidates } from '../src/retrieve.js';
-import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki } from '../src/llm.js';
+import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki, synthesize } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
 import { lintWiki, consolidateDomains, applyLintOps, checkCitations } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
@@ -124,12 +124,16 @@ program
 const QUERY_NOTE_LIMIT = 12;
 
 // Closed-world counterpart of `ask`: answer FROM the vault instead of into it.
-// Read-only by design — no note, no source, no taxonomy/MOC churn, no log entry.
+// Read-only by default — no note, no source, no churn. With --save the grounded
+// answer is persisted as a `synthesis` note (a research report that links the notes
+// it drew on) so a good closed-world answer becomes part of the graph instead of
+// vanishing.
 program
   .command('query')
   .argument('<question>')
+  .option('--save', 'Persist the answer as a synthesis note')
   .description('Answer a question from the existing notes only, with [[note]] citations')
-  .action(async (question) => {
+  .action(async (question, cmdOptions) => {
     const options = program.opts();
     const candidates = selectCandidates(buildCatalog(config.wikiPath), question, QUERY_NOTE_LIMIT);
     if (candidates.length === 0) {
@@ -145,6 +149,29 @@ program
     }));
     const answer = await queryWiki(config, { question, notes, providerName: options.provider });
     console.log('\n' + answer);
+
+    if (!cmdOptions.save) return;
+
+    console.log(chalk.blue('\nSaving synthesis...'));
+    // Pin the unformatted answer in sources/ as the source of record, exactly like
+    // `ask` — it is what the note is derived from, so nothing is lost if a later
+    // edit reshapes the note.
+    const sourcePath = saveSource(config.wikiPath, { title: question.slice(0, 60), question, content: answer });
+    const sourceSlug = path.basename(sourcePath, '.md');
+
+    let note = await synthesize(config, { question, answer, providerName: options.provider });
+    note = note.replace(/^source:.*$/m, `source: ${sourceSlug}`);
+
+    const { domain, topic, title } = extractFrontmatter(note);
+    const noteTitle = title || question.slice(0, 60);
+    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: note });
+    if (renamed) warnCollision(savedPath, noteTitle);
+    saveTaxonomy(config.wikiPath, config, domain, topic);
+    appendLog(config.wikiPath, 'synthesize', noteTitle);
+    console.log(chalk.green(`Saved: ${savedPath}`));
+    updateMOC(config.wikiPath);
+    updateIndex(config.wikiPath);
+    updateWikiDomains(config.wikiPath);
   });
 
 // ── rewrite ───────────────────────────────────────────────────────────────────

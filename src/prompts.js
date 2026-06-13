@@ -124,6 +124,40 @@ ${content}`
   };
 }
 
+// Synthesis: persist a `wiki query` answer as a note. The grounded answer is kept
+// whole (assembled into the body in code, see synthesize in llm.js), so the model is
+// asked ONLY for frontmatter values — never to reshape the report. languageDirective
+// keeps the structural tokens (keys) English while domain/topic/tags text localizes.
+export function getSynthesisFrontmatterPrompt(question, answer, domains, lang = 'zh') {
+  const hasDomains = Object.keys(domains).length > 0;
+  const taxonomyHint = hasDomains
+    ? `Known domains and topics:\n${Object.entries(domains).map(([d, ts]) => `  ${d}: ${ts.length ? ts.join(', ') : '(no topics yet)'}`).join('\n')}\nUse the closest match. If nothing fits, infer a new concise domain and topic.`
+    : 'No taxonomy defined yet. Infer an appropriate domain and topic.';
+  return {
+    system: `You are a knowledge architect cataloging a research synthesis for a personal wiki. The synthesis answer is already written; assign only its frontmatter. Respond only with valid JSON — no prose, no code fences.
+
+${languageDirective(lang)}
+
+Return ONLY a JSON object of exactly this shape:
+{"title": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"], "aliases": []}
+
+- title: a specific noun phrase naming what this synthesis establishes (Title Case, 3–7 words, no trailing punctuation). It must be distinctive enough to stand alone in an index.
+- domain and topic: from the TAXONOMY in the user message.
+- tags: JSON array of 3–6 tags, each a single token with NO spaces (kebab-case for multi-word concepts).
+- aliases: JSON array of 0–3 alternative names other notes might use to link here; [] when none apply.`,
+    user: `Assign frontmatter for this synthesis.
+
+TAXONOMY:
+${taxonomyHint}
+
+QUESTION:
+${question}
+
+SYNTHESIS ANSWER:
+${answer}`
+  };
+}
+
 // Interactive ask: revise the pass-1 free-form answer per a follow-up. No schema,
 // no frontmatter, no link rules — those belong to the format pass at save time.
 export function getRefinePrompt(answer, followUp, lang = 'zh') {
