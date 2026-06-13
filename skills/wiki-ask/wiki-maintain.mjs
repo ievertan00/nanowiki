@@ -45,6 +45,50 @@ function parseFrontmatter(content) {
   return result;
 }
 
+// ── Schema rename: enforce <domain>-<topic>-<title> filenames (code-owned naming) ──
+// Mirrors the CLI's renameToSchema (src/lint.js). Renames any note whose filename is
+// not <domain>-<topic>-<title>, rewriting inbound [[links]]. Notes missing domain or
+// topic are left as-is. Same slugify/normalize rules as the CLI — keep in sync.
+const schemaSlugify = s => String(s).replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '');
+const schemaNormalize = s => String(s).toLowerCase().replace(/[\s\-_:：、，。！？]+/g, '').replace(/[^\w一-鿿]/g, '');
+
+function rewriteInboundLinks(fromSlug, toSlug) {
+  const target = schemaNormalize(fromSlug);
+  for (const f of fs.readdirSync(notesDir).filter(f => f.endsWith('.md'))) {
+    const p = path.join(notesDir, f);
+    const content = fs.readFileSync(p, 'utf8');
+    const updated = content.replace(/\[\[([^\]|]+)(\|[^\]]*)?\]\]/g, (m, t, disp) =>
+      schemaNormalize(t) === target ? `[[${toSlug}${disp || ''}]]` : m);
+    if (updated !== content) fs.writeFileSync(p, updated);
+  }
+}
+
+function renameToSchema() {
+  if (!fs.existsSync(notesDir)) return 0;
+  const files = fs.readdirSync(notesDir).filter(f => f.endsWith('.md'));
+  const taken = new Set(files.map(f => path.basename(f, '.md')));
+  let count = 0;
+  for (const file of files) {
+    const currentSlug = path.basename(file, '.md');
+    const fm = parseFrontmatter(fs.readFileSync(path.join(notesDir, file), 'utf8'));
+    if (!fm.domain || !fm.topic) continue;
+    const title = fm.title || currentSlug;
+    let desired = schemaSlugify(`${fm.domain}-${fm.topic}-${title}`);
+    if (!desired || desired === currentSlug) continue;
+    if (taken.has(desired)) {
+      let n = 2;
+      while (taken.has(`${desired}-${n}`)) n++;
+      desired = `${desired}-${n}`;
+    }
+    fs.renameSync(path.join(notesDir, file), path.join(notesDir, `${desired}.md`));
+    taken.delete(currentSlug);
+    taken.add(desired);
+    rewriteInboundLinks(currentSlug, desired);
+    count++;
+  }
+  return count;
+}
+
 function readNotes() {
   if (!fs.existsSync(notesDir)) return [];
   return fs.readdirSync(notesDir).filter(f => f.endsWith('.md')).map(f => {
@@ -74,6 +118,7 @@ function ensureScaffold() {
 }
 
 ensureScaffold();
+const renamedCount = renameToSchema();
 const notes = readNotes();
 
 // ── MOC: one file per domain, grouped by topic, sorted by title ──────────────
@@ -159,4 +204,4 @@ rebuildTaxonomy();
 updateWikiDomains();
 appendLog();
 
-console.log(`Maintained: ${notes.length} note(s) → moc/, meta/index.md, taxonomy${op ? `, logged ${op}` : ''}.`);
+console.log(`Maintained: ${notes.length} note(s)${renamedCount ? `, ${renamedCount} renamed to schema` : ''} → moc/, meta/index.md, taxonomy${op ? `, logged ${op}` : ''}.`);
