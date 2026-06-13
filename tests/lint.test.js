@@ -187,4 +187,18 @@ describe('renameToSchema', () => {
     const content = fs.readFileSync(path.join(vault, 'notes', 'AI-llm-self.md'), 'utf8');
     assert.match(content, /related:: \[\[AI-llm-self\]\]/);
   });
+
+  test('is idempotent on a duplicate-title collision (no oscillation across runs)', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'AI-llm-Dup.md'), note({ domain: 'AI', topic: 'llm', title: 'Dup' }));
+    fs.writeFileSync(path.join(vault, 'notes', 'AI-llm-Dup-2.md'), note({ domain: 'AI', topic: 'llm', title: 'Dup' }));
+    assert.deepStrictEqual(renameToSchema(vault).renamed, []);
+    assert.deepStrictEqual(renameToSchema(vault).renamed, []); // second pass must not churn
+    assert.ok(fs.existsSync(path.join(vault, 'notes', 'AI-llm-Dup.md')));
+    assert.ok(fs.existsSync(path.join(vault, 'notes', 'AI-llm-Dup-2.md')));
+  });
+
+  test('promotes a -N disambiguation to the bare name when the bare name is free', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'AI-llm-Solo-2.md'), note({ domain: 'AI', topic: 'llm', title: 'Solo' }));
+    assert.deepStrictEqual(renameToSchema(vault).renamed, [{ from: 'AI-llm-Solo-2', to: 'AI-llm-Solo' }]);
+  });
 });

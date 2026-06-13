@@ -340,10 +340,13 @@ export function renameToSchema(wikiPath) {
     let desired = schemaName({ domain: fm.domain, topic: fm.topic, title: fm.title || currentSlug });
     if (!desired) { flagged.push(currentSlug); continue; }
     if (desired === currentSlug) continue; // already conforming
-    // `taken` is seeded from pre-rename names, so a note still occupying `desired` but
-    // itself being renamed away later in this same pass still forces a -2 suffix here;
-    // it self-corrects on a later `wiki lint`. Never clobbers, never dead-links.
     if (taken.has(desired)) {
+      // The bare schema name is occupied by another note. If currentSlug is already a
+      // stable `<desired>-N` disambiguation of it, leave it — renaming would just pick a
+      // different suffix every run and oscillate forever. Otherwise claim the next free
+      // suffix. (When the bare name is free, we fall through and rename to it, which also
+      // promotes a stale `<desired>-N` back to the bare name.)
+      if (currentSlug.replace(/-\d+$/, '') === desired) continue;
       let n = 2;
       while (taken.has(`${desired}-${n}`)) n++;
       desired = `${desired}-${n}`;
