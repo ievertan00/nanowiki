@@ -18,12 +18,29 @@ import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, hashSource,
 const program = new Command();
 let config;
 
-try {
-  config = loadConfig();
-  initVault(config.wikiPath, config);
-} catch (e) {
-  console.error(chalk.red(e.message));
-  process.exit(1);
+// The first positional token is the subcommand (global options like --provider /
+// --lang take a value and are skipped). `init` bootstraps a vault before any
+// WIKI_PATH exists, so it must run without the loadConfig startup that every other
+// command depends on.
+function invokedCommand(argv) {
+  const valued = new Set(['--provider', '--lang']);
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i];
+    if (valued.has(a)) { i++; continue; }
+    if (a.startsWith('-')) continue;
+    return a;
+  }
+  return undefined;
+}
+
+if (invokedCommand(process.argv) !== 'init') {
+  try {
+    config = loadConfig();
+    initVault(config.wikiPath, config);
+  } catch (e) {
+    console.error(chalk.red(e.message));
+    process.exit(1);
+  }
 }
 
 program
@@ -57,6 +74,26 @@ function warnCollision(savedPath, noteTitle) {
   console.warn(chalk.yellow(`Warning: a note with this slug already exists — saved as ${path.basename(savedPath)} instead. Rename or merge it; links and updates can't reach the suffixed file.`));
   appendLog(config.wikiPath, 'collision', noteTitle);
 }
+
+// ── init ──────────────────────────────────────────────────────────────────────
+
+// Bootstrap a fresh vault (the four dirs + seeded wiki-config.json + WIKI.md) in
+// the current directory, or in [path]. Unlike every other command this runs
+// without a configured WIKI_PATH — it's how you create the vault that WIKI_PATH
+// will then point at.
+program
+  .command('init')
+  .argument('[path]', 'Directory to initialize (defaults to the current directory)')
+  .description('Initialize the wiki vault structure in a directory')
+  .action((dir) => {
+    const { lang } = program.opts();
+    // Precedence: explicit [path] arg (resolved against cwd) -> WIKI_PATH from
+    // .env -> cwd. dotenv has already populated process.env from the repo .env.
+    const target = path.resolve(dir || process.env.WIKI_PATH || process.cwd());
+    initVault(target, lang ? { language: lang } : {});
+    console.log(chalk.green(`Initialized wiki vault in ${target}`));
+    console.log(chalk.gray(`Set WIKI_PATH to this path (in .env) to use the vault with the other commands.`));
+  });
 
 // ── ask ──────────────────────────────────────────────────────────────────────
 

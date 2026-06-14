@@ -16,6 +16,10 @@ npm run skills:install        # installs skills/wiki-* into each detected CLI: ~
 node --test                   # run the whole suite (requires WIKI_PATH set)
 node --test tests\note.test.js   # run a single test file
 
+wiki init [path]              # bootstrap a vault (the four dirs + seeded wiki-config.json + WIKI.md).
+                              #   Target precedence: [path] arg (resolved against cwd) -> .env WIKI_PATH -> cwd.
+                              #   The one command that runs WITHOUT a configured WIKI_PATH — it creates the
+                              #   vault that WIKI_PATH will then point at. No skill counterpart.
 wiki ask "<question>"         # answer (pass 1) -> interactive refine loop (TTY only) -> format+save (pass 2)
                               #   "Any further question? [Y/n]": Enter/y = refine the free-form answer, n = format and save once
                               #   non-TTY stdin/stdout (pipes, scripts) skips the loop entirely
