@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { updateNote } from '../src/ingest.js';
+import { updateNote, ingestSource, chunkText } from '../src/ingest.js';
 
 const EXISTING = `---
 title: KV Cache Reuse
@@ -124,5 +124,73 @@ describe('updateNote', () => {
       existingContent: aliased, addition: 'new fact', sourceTitle: 'Paper'
     }, MockOpenAI);
     assert.match(content, /^aliases: \[键值缓存\]$/m);
+  });
+});
+
+describe('chunkText', () => {
+  test('returns the original text as a single chunk when it fits', () => {
+    assert.deepStrictEqual(chunkText('short text', 100), ['short text']);
+  });
+
+  test('packs paragraphs greedily and reconstructs the original on join', () => {
+    const paras = ['aaaaaaaaaa', 'bbbbbbbbbb', 'cccccccccc', 'dddddddddd'];
+    const text = paras.join('\n\n');
+    const chunks = chunkText(text, 25);
+    assert.deepStrictEqual(chunks, ['aaaaaaaaaa\n\nbbbbbbbbbb', 'cccccccccc\n\ndddddddddd']);
+    assert.strictEqual(chunks.join('\n\n'), text);
+  });
+
+  test('hard-splits a single paragraph longer than the limit', () => {
+    const text = 'x'.repeat(120);
+    assert.deepStrictEqual(chunkText(text, 50), ['x'.repeat(50), 'x'.repeat(50), 'x'.repeat(20)]);
+  });
+});
+
+const FORMAT_JSON = JSON.stringify({
+  frontmatter: { title: 'Long Paper', type: 'literature', source: 'Long Paper', domain: 'ai', topic: 'llm', tags: ['llm'] },
+  body: [
+    '## Source Facts', '- fact', '',
+    '## Synthesis', 'Interpretation.', '',
+    '## Connections', '',
+    '## Speculation', '',
+    '## Open Questions', '',
+    '## Human Insight'
+  ].join('\n')
+});
+
+describe('ingestSource', () => {
+  test('short sources make a single extraction call (no chunkInfo)', async () => {
+    const extraction = JSON.stringify({ summary: 'Summary', updates: [] });
+    const { MockOpenAI, calls } = makeMock([extraction, FORMAT_JSON]);
+    await ingestSource(config, { sourceContent: 'short source', sourceTitle: 'Paper' }, MockOpenAI);
+
+    assert.strictEqual(calls.length, 2); // 1 extraction + 1 format
+    assert.doesNotMatch(calls[0].payload.messages[1].content, /part \d+ of \d+/);
+  });
+
+  test('long sources are chunked for extraction, then merged into one literature note', async () => {
+    // Two paragraphs over the 48000-char chunk budget -> 2 extraction calls.
+    const sourceContent = 'a'.repeat(30000) + '\n\n' + 'b'.repeat(30000);
+    const chunk1 = JSON.stringify({ summary: 'Summary part 1', updates: [{ note: 'kv-cache', addition: 'Addition A' }] });
+    const chunk2 = JSON.stringify({
+      summary: 'Summary part 2',
+      updates: [{ note: 'kv-cache', addition: 'Addition B' }, { note: 'other-note', addition: 'Addition C' }]
+    });
+    const { MockOpenAI, calls } = makeMock([chunk1, chunk2, FORMAT_JSON]);
+    const { literatureNote, updates } = await ingestSource(config, { sourceContent, sourceTitle: 'Long Paper' }, MockOpenAI);
+
+    assert.strictEqual(calls.length, 3); // 2 extraction chunks + 1 format
+    assert.match(calls[0].payload.messages[1].content, /part 1 of 2/);
+    assert.match(calls[1].payload.messages[1].content, /part 2 of 2/);
+
+    // Pass 2 sees both chunk summaries, joined.
+    assert.match(calls[2].payload.messages[1].content, /Summary part 1[\s\S]*Summary part 2/);
+
+    // Updates to the same note across chunks are merged into one entry.
+    assert.deepStrictEqual(updates, [
+      { note: 'kv-cache', addition: 'Addition A\n\nAddition B' },
+      { note: 'other-note', addition: 'Addition C' }
+    ]);
+    assert.match(literatureNote, /^---\ntitle: Long Paper/);
   });
 });

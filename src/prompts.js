@@ -145,7 +145,11 @@ export function getQueryPrompt(question, notes, lang = 'zh') {
   };
 }
 
-export function getExtractionPrompt(sourceContent, sourceTitle, candidates, lang = 'zh') {
+// chunkInfo ({index, total}, both 0-based/1-based as named) is set when a long
+// source has been split for pass-1 extraction (see INGEST_CHUNK_CHARS in
+// ingest.js) — it narrows the "summary" ask to this part only, so the model
+// isn't tempted to compress the whole document into one paragraph.
+export function getExtractionPrompt(sourceContent, sourceTitle, candidates, lang = 'zh', chunkInfo = null) {
   const noteList = (candidates && candidates.length)
     ? candidates.map(c => {
         if (typeof c === 'string') return `- ${c}`;
@@ -153,10 +157,17 @@ export function getExtractionPrompt(sourceContent, sourceTitle, candidates, lang
         return `- ${c.slug}${desc ? `: ${desc}` : ''}`;
       }).join('\n')
     : 'none';
+  const partNote = chunkInfo
+    ? `This is part ${chunkInfo.index + 1} of ${chunkInfo.total} of a longer source document — extract information from THIS PART only; do not assume context from other parts.\n`
+    : '';
+  const summaryDesc = chunkInfo
+    ? "summary of this part's key facts, arguments, and insights"
+    : "thorough summary of the source's key facts, arguments, and insights";
+  const sourceLabel = chunkInfo ? `SOURCE DOCUMENT (part ${chunkInfo.index + 1}/${chunkInfo.total})` : 'SOURCE DOCUMENT';
   return {
     system: 'You are a knowledge architect. Extract structured information from a source document for ingestion into a personal wiki. Respond only with valid JSON.',
     user: `Read the following source document and extract structured information.
-
+${partNote}
 ${languageDirective(lang)}
 (This applies to the "summary" and "addition" text. Copy each "note" name VERBATIM from the existing-notes list — never translate it.)
 
@@ -167,7 +178,7 @@ SOURCE TITLE: ${sourceTitle}
 
 Return a JSON object with exactly this shape:
 {
-  "summary": "thorough summary of the source's key facts, arguments, and insights",
+  "summary": "${summaryDesc}",
   "updates": [
     {"note": "<name copied verbatim from before the colon in the list above>", "addition": "specific paragraph of new information to integrate"}
   ]
@@ -178,7 +189,7 @@ Rules:
 - Each addition should be one focused paragraph of genuinely new information
 - If no existing notes need updating, return "updates": []
 
-SOURCE DOCUMENT:
+${sourceLabel}:
 ${sourceContent}`
   };
 }

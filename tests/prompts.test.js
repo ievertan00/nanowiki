@@ -107,6 +107,20 @@ describe('getExtractionPrompt', () => {
     assert.match(user, /before the colon/);
     assert.doesNotMatch(user, /exact-existing-note-title/);
   });
+
+  test('with chunkInfo, narrows the summary ask to this part and labels the source', () => {
+    const { user } = getExtractionPrompt('s', 't', [], 'en', { index: 0, total: 3 });
+    assert.match(user, /part 1 of 3 of a longer source document/);
+    assert.match(user, /summary of this part's key facts/);
+    assert.match(user, /SOURCE DOCUMENT \(part 1\/3\):/);
+  });
+
+  test('without chunkInfo, asks for a thorough whole-source summary', () => {
+    const { user } = getExtractionPrompt('s', 't', []);
+    assert.match(user, /thorough summary of the source's key facts/);
+    assert.match(user, /SOURCE DOCUMENT:\ns/);
+    assert.doesNotMatch(user, /part \d+ of \d+/);
+  });
 });
 
 describe('getNoteUpdatePrompt', () => {
