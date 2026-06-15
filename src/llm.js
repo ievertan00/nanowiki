@@ -99,9 +99,10 @@ export async function repairNote(config, { note, providerName = 'default' }, Ope
   return best;
 }
 
-// Pass 1: free-form answer, no schema to juggle.
-export async function answerQuestion(config, { question, providerName = 'default' }, OpenAIClient = OpenAI) {
-  const prompt = getContentPrompt(question, config.language || 'zh');
+// Pass 1: free-form answer, no schema to juggle. personaText/structureText are
+// optional pass-1-only guidance loaded from <vault>/templates/ (see templates.js).
+export async function answerQuestion(config, { question, providerName = 'default', personaText, structureText }, OpenAIClient = OpenAI) {
+  const prompt = getContentPrompt(question, config.language || 'zh', { personaText, structureText });
   return chat(config, providerName, OpenAIClient, prompt);
 }
 
@@ -141,8 +142,9 @@ export async function synthesize(config, { question, answer, providerName = 'def
 
 // Interactive ask: revise/extend the free-form answer per a follow-up. Schema
 // concerns (frontmatter, links, sections) belong to the single format pass at save.
-export async function refineAnswer(config, { answer, followUp, providerName = 'default' }, OpenAIClient = OpenAI) {
-  const prompt = getRefinePrompt(answer, followUp, config.language || 'zh');
+// personaText/structureText keep the same pass-1 guidance applied across follow-ups.
+export async function refineAnswer(config, { answer, followUp, providerName = 'default', personaText, structureText }, OpenAIClient = OpenAI) {
+  const prompt = getRefinePrompt(answer, followUp, config.language || 'zh', { personaText, structureText });
   return chat(config, providerName, OpenAIClient, prompt);
 }
 

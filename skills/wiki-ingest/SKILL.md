@@ -1,7 +1,7 @@
 ---
 name: wiki-ingest
 description: Ingest a source document or URL into the Obsidian wiki — write a literature note for it and fan out updates to existing notes it touches. Accepts a local file or an http(s) URL (fetched to sources/ first; YouTube links become transcripts). Extracts a summary plus targeted additions, formats the summary as a literature note, integrates each addition into an existing note (preserving Human Insight), skips targets that don't exist, and regenerates the vault's MOC/index/log. Use when the user runs /wiki-ingest or asks to "ingest this paper/article/URL", "process this source into the wiki". The model behind this CLI is the generator — no API keys needed.
-argument-hint: "<name-in-sources | @path | path | url> [--lang zh|en] [--vault <path>]"
+argument-hint: "<name-in-sources | @path | path | url> [--lang zh|en] [--persona <name>] [--structure <name>] [--vault <path>]"
 ---
 
 # wiki-ingest
@@ -25,9 +25,9 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 
 1. **Resolve** the vault path and output language. The vault is the directory where the
    CLI was started (the current working directory) unless `--vault` overrides it — see
-   `note-schema.md`. Parse `--lang`, `--vault`; the remainder is the file argument.
-   Normalize it: strip a leading `@` (the file-reference marker CLIs like Claude Code
-   prepend) and any surrounding quotes.
+   `note-schema.md`. Parse `--lang`, `--persona`, `--structure`, `--vault`; the
+   remainder is the file argument. Normalize it: strip a leading `@` (the
+   file-reference marker CLIs like Claude Code prepend) and any surrounding quotes.
 
    **If the argument is an http(s) URL** (matches `^https?://`), fetch it instead of
    resolving a file:
@@ -61,6 +61,13 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 2. **Gather context.** List `notes/` basenames (existing-notes list) and read the
    `domains` taxonomy from `wiki-config.json`.
 
+   If `--persona <name>` or `--structure <name>` was given, read
+   `<vault>\templates\personas\<name>.md` / `<vault>\templates\structures\<name>.md`.
+   Error if a named file doesn't exist (`Persona not found: <name> (looked in
+   <vault>\templates\personas\<name>.md)`, same wording for structures). These are
+   user-maintained, vault-local templates — empty `templates/personas/` and
+   `templates/structures/` dirs already exist in every vault.
+
 3. **Pass 1 — Extract.** Read the whole source with your Read tool:
    - **PDF** (`.pdf`): Read extracts the text directly. If the PDF has more than 20
      pages, read it in page-range chunks (`pages: "1-20"`, `"21-40"`, ...) and
@@ -83,6 +90,11 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      translate it, never invent one. If no existing note needs updating, `updates` is empty.
    - Each `addition` is one focused paragraph of genuinely new information (in the
      resolved language).
+   - If a **persona** template was loaded, let its text shape the voice/framing of
+     `summary`. If a **structure** template was loaded, treat its text as a checklist
+     of aspects the source may cover — extract information about them where the
+     source addresses them, so they aren't neglected in `summary`. Both are
+     **pass-1 only**: pass 2 below just reshapes whatever `summary` contains.
 
 4. **Pass 2 — Literature note.** Format `summary` into the note schema as a
    **literature** note: `type: literature`, `source: <sourceTitle>`. Assign

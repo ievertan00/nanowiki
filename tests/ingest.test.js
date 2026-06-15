@@ -168,6 +168,22 @@ describe('ingestSource', () => {
     assert.doesNotMatch(calls[0].payload.messages[1].content, /part \d+ of \d+/);
   });
 
+  test('personaText/structureText reach the extraction call but not the format call', async () => {
+    const extraction = JSON.stringify({ summary: 'Summary', updates: [] });
+    const { MockOpenAI, calls } = makeMock([extraction, FORMAT_JSON]);
+    await ingestSource(config, {
+      sourceContent: 'short source',
+      sourceTitle: 'Paper',
+      personaText: 'Skeptical reviewer.',
+      structureText: 'Note limitations and reproducibility.'
+    }, MockOpenAI);
+
+    assert.match(calls[0].payload.messages[0].content, /PERSONA:\nSkeptical reviewer\./);
+    assert.match(calls[0].payload.messages[0].content, /FOCUS AREAS:\n[^\n]+\nNote limitations and reproducibility\./);
+    assert.doesNotMatch(calls[1].payload.messages[0].content, /PERSONA:/);
+    assert.doesNotMatch(calls[1].payload.messages[0].content, /FOCUS AREAS:/);
+  });
+
   test('long sources are chunked for extraction, then merged into one literature note', async () => {
     // Two paragraphs over the 48000-char chunk budget -> 2 extraction calls.
     const sourceContent = 'a'.repeat(30000) + '\n\n' + 'b'.repeat(30000);

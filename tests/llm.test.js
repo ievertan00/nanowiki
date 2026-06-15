@@ -267,6 +267,29 @@ describe('interactive ask pieces', () => {
     assert.match(calls[0].payload.messages[1].content, /FOLLOW-UP:\nadd caveats/);
   });
 
+  test('answerQuestion threads personaText/structureText into the system message', async () => {
+    const { MockOpenAI, calls } = makeMock(['the answer']);
+    await answerQuestion(config, {
+      question: 'Why?',
+      personaText: 'Explain like a beginner.',
+      structureText: 'Mention costs and limitations.'
+    }, MockOpenAI);
+    assert.match(calls[0].payload.messages[0].content, /PERSONA:\nExplain like a beginner\./);
+    assert.match(calls[0].payload.messages[0].content, /FOCUS AREAS:\n[^\n]+\nMention costs and limitations\./);
+  });
+
+  test('refineAnswer threads personaText/structureText into the system message', async () => {
+    const { MockOpenAI, calls } = makeMock(['revised answer']);
+    await refineAnswer(config, {
+      answer: 'draft v1',
+      followUp: 'add caveats',
+      personaText: 'Explain like a beginner.',
+      structureText: 'Mention costs and limitations.'
+    }, MockOpenAI);
+    assert.match(calls[0].payload.messages[0].content, /PERSONA:\nExplain like a beginner\./);
+    assert.match(calls[0].payload.messages[0].content, /FOCUS AREAS:\n[^\n]+\nMention costs and limitations\./);
+  });
+
   test('formatNote forces type and source title when given', async () => {
     const { MockOpenAI, calls } = makeMock(['note']);
     await formatNote(config, { content: 'summary', forcedType: 'literature', sourceTitle: 'paper.md' }, MockOpenAI);

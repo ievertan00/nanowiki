@@ -11,6 +11,21 @@ describe('getContentPrompt', () => {
     const en = getContentPrompt('What is attention?', 'en');
     assert.match(en.system, /Respond in English\./);
   });
+
+  test('appends PERSONA and FOCUS AREAS blocks when guidance is provided', () => {
+    const { system } = getContentPrompt('What is attention?', 'en', {
+      personaText: 'Explain like a beginner.',
+      structureText: 'Mention costs and limitations.'
+    });
+    assert.match(system, /PERSONA:\nExplain like a beginner\./);
+    assert.match(system, /FOCUS AREAS:\n[^\n]+\nMention costs and limitations\./);
+  });
+
+  test('omits guidance blocks entirely when neither persona nor structure is provided', () => {
+    const { system } = getContentPrompt('What is attention?', 'en');
+    assert.doesNotMatch(system, /PERSONA:/);
+    assert.doesNotMatch(system, /FOCUS AREAS:/);
+  });
 });
 
 describe('getSynthesisFrontmatterPrompt', () => {
@@ -143,6 +158,21 @@ describe('getExtractionPrompt', () => {
     assert.match(user, /SOURCE DOCUMENT:\ns/);
     assert.doesNotMatch(user, /part \d+ of \d+/);
   });
+
+  test('appends PERSONA and FOCUS AREAS guidance to the system message when provided', () => {
+    const { system } = getExtractionPrompt('s', 't', [], 'en', null, {
+      personaText: 'Skeptical reviewer.',
+      structureText: 'Note limitations and reproducibility.'
+    });
+    assert.match(system, /PERSONA:\nSkeptical reviewer\./);
+    assert.match(system, /FOCUS AREAS:\n[^\n]+\nNote limitations and reproducibility\./);
+  });
+
+  test('omits guidance blocks entirely when neither persona nor structure is provided', () => {
+    const { system } = getExtractionPrompt('s', 't', []);
+    assert.doesNotMatch(system, /PERSONA:/);
+    assert.doesNotMatch(system, /FOCUS AREAS:/);
+  });
 });
 
 describe('getNoteUpdatePrompt', () => {
@@ -176,5 +206,20 @@ describe('getRefinePrompt', () => {
     assert.match(user, /FOLLOW-UP:\nmention KV-cache constraints/);
     assert.match(system, /no YAML frontmatter, no wiki-note sections/);
     assert.match(system, /Respond in English\./);
+  });
+
+  test('appends PERSONA and FOCUS AREAS guidance to the system message when provided', () => {
+    const { system } = getRefinePrompt('the draft answer', 'follow up', 'en', {
+      personaText: 'Beginner-friendly voice.',
+      structureText: 'Mention edge cases.'
+    });
+    assert.match(system, /PERSONA:\nBeginner-friendly voice\./);
+    assert.match(system, /FOCUS AREAS:\n[^\n]+\nMention edge cases\./);
+  });
+
+  test('omits guidance blocks entirely when neither persona nor structure is provided', () => {
+    const { system } = getRefinePrompt('the draft answer', 'follow up', 'en');
+    assert.doesNotMatch(system, /PERSONA:/);
+    assert.doesNotMatch(system, /FOCUS AREAS:/);
   });
 });

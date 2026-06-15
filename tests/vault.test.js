@@ -21,7 +21,7 @@ describe('vault management', () => {
   test('initVault creates the four vault dirs and seeds config + WIKI.md', () => {
     initVault(tempDir, { language: 'en' });
 
-    for (const dir of ['sources', 'notes', 'moc', 'meta']) {
+    for (const dir of ['sources', 'notes', 'moc', 'meta', 'templates/personas', 'templates/structures']) {
       assert.ok(fs.existsSync(path.join(tempDir, dir)), `${dir} should exist`);
     }
     const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'wiki-config.json'), 'utf8'));

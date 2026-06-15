@@ -32,6 +32,7 @@ The vault is built from four layers, each with a clear owner:
 | `notes/`   | **The LLM** | All wiki pages, flat. Organization is frontmatter + `[[links]]`, never folders. |
 | `moc/`     | **The CLI** | Per-domain Maps of Content, auto-regenerated after every change.                |
 | `meta/`    | **The CLI** | The full note index, lint reports, and an append-only operation log.            |
+| `templates/` | **You**   | Reusable persona/structure text blocks for `ask`/`ingest` (`--persona`, `--structure`). |
 
 ### Vault Structure
 
@@ -46,6 +47,9 @@ wiki-vault/
 │   ├── index.md      ← full note catalog (auto-generated)
 │   ├── lint-<date>.md ← health-check reports
 │   └── log.md        ← append-only, grep-friendly operation log
+├── templates/
+│   ├── personas/     ← reusable voice/framing text blocks (--persona <name>)
+│   └── structures/   ← reusable focus-area checklists (--structure <name>)
 ├── wiki-config.json  ← live taxonomy (domains/topics) + overrides
 └── WIKI.md           ← the schema document, co-evolved by you and the LLM
 ```
@@ -171,6 +175,20 @@ wiki rewrite rough-notes.md --type literature
 ```
 
 `<file>` resolves the same way for `rewrite` and `ingest`: a bare filename is looked up under `<vault>/sources/` first, then treated as a literal path.
+
+### Personas & focus-area structures
+
+`templates/personas/<name>.md` and `templates/structures/<name>.md` are reusable, user-maintained text blocks you can select per-invocation on `ask` and `ingest`:
+
+```powershell
+wiki ask "What is attention?" --persona beginner
+wiki ingest paper.pdf --structure performance-notes
+```
+
+- **A persona** (`--persona <name>`) shapes the *voice/framing* of the pass-1 answer or source summary — e.g. "explain like I'm new to this" or "critical, skeptical reviewer."
+- **A structure** (`--structure <name>`) is a checklist of aspects the pass-1 output should cover where relevant — e.g. "always note performance numbers, limitations, and alternatives considered" — so the LLM doesn't neglect things you habitually care about.
+
+Both apply to **pass 1 only**: they shape the free-form answer or source summary, never the note schema itself — a richer pass-1 output simply gives pass 2 more to work with when it fills `## Source Facts`. Omitting both flags is a no-op, and naming a template that doesn't exist is an error before any LLM call.
 
 ### How the vault maintains itself
 

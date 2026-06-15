@@ -50,9 +50,22 @@ function languageDirective(lang) {
   ].join('\n');
 }
 
-export function getContentPrompt(question, lang = 'zh') {
+// Optional pass-1 guidance from <vault>/templates/{personas,structures}/<name>.md
+// (see templates.js): a persona shapes the voice/framing of the free-form answer
+// or summary; a structure is a checklist of aspects the user habitually cares
+// about, so the LLM doesn't neglect them. Both are pass-1 only — richer pass-1
+// content simply gives the (untouched) format pass more to work with.
+function guidanceBlock({ personaText, structureText } = {}, focusFraming) {
+  const parts = [];
+  if (personaText) parts.push(`PERSONA:\n${personaText}`);
+  if (structureText) parts.push(`FOCUS AREAS:\n${focusFraming}\n${structureText}`);
+  return parts.length ? `\n\n${parts.join('\n\n')}` : '';
+}
+
+export function getContentPrompt(question, lang = 'zh', guidance = {}) {
+  const focusFraming = 'Make sure your answer addresses the following aspects where relevant, even if you would not otherwise emphasize them:';
   return {
-    system: `You are a knowledgeable assistant. Answer accurately and thoroughly.\n${contentLangLine(lang)}`,
+    system: `You are a knowledgeable assistant. Answer accurately and thoroughly.\n${contentLangLine(lang)}${guidanceBlock(guidance, focusFraming)}`,
     user: question
   };
 }
@@ -160,9 +173,10 @@ ${answer}`
 
 // Interactive ask: revise the pass-1 free-form answer per a follow-up. No schema,
 // no frontmatter, no link rules — those belong to the format pass at save time.
-export function getRefinePrompt(answer, followUp, lang = 'zh') {
+export function getRefinePrompt(answer, followUp, lang = 'zh', guidance = {}) {
+  const focusFraming = 'Make sure the updated answer addresses the following aspects where relevant, even if you would not otherwise emphasize them:';
   return {
-    system: `You are a knowledgeable assistant revising a draft answer. Apply the user's follow-up: if it is a new question, answer it and merge the result in; if it is an instruction, revise accordingly. Preserve everything the follow-up does not affect. Return the complete updated answer as plain prose/Markdown — no YAML frontmatter, no wiki-note sections.\n${contentLangLine(lang)}`,
+    system: `You are a knowledgeable assistant revising a draft answer. Apply the user's follow-up: if it is a new question, answer it and merge the result in; if it is an instruction, revise accordingly. Preserve everything the follow-up does not affect. Return the complete updated answer as plain prose/Markdown — no YAML frontmatter, no wiki-note sections.\n${contentLangLine(lang)}${guidanceBlock(guidance, focusFraming)}`,
     user: `CURRENT ANSWER:\n${answer}\n\nFOLLOW-UP:\n${followUp}`
   };
 }
@@ -183,7 +197,7 @@ export function getQueryPrompt(question, notes, lang = 'zh') {
 // source has been split for pass-1 extraction (see INGEST_CHUNK_CHARS in
 // ingest.js) — it narrows the "summary" ask to this part only, so the model
 // isn't tempted to compress the whole document into one paragraph.
-export function getExtractionPrompt(sourceContent, sourceTitle, candidates, lang = 'zh', chunkInfo = null) {
+export function getExtractionPrompt(sourceContent, sourceTitle, candidates, lang = 'zh', chunkInfo = null, guidance = {}) {
   const noteList = (candidates && candidates.length)
     ? candidates.map(c => {
         if (typeof c === 'string') return `- ${c}`;
@@ -198,8 +212,9 @@ export function getExtractionPrompt(sourceContent, sourceTitle, candidates, lang
     ? "summary of this part's key facts, arguments, and insights"
     : "thorough summary of the source's key facts, arguments, and insights";
   const sourceLabel = chunkInfo ? `SOURCE DOCUMENT (part ${chunkInfo.index + 1}/${chunkInfo.total})` : 'SOURCE DOCUMENT';
+  const focusFraming = 'When summarizing this source, extract information about the following aspects where the source covers them:';
   return {
-    system: 'You are a knowledge architect. Extract structured information from a source document for ingestion into a personal wiki. Respond only with valid JSON.',
+    system: `You are a knowledge architect. Extract structured information from a source document for ingestion into a personal wiki. Respond only with valid JSON.${guidanceBlock(guidance, focusFraming)}`,
     user: `Read the following source document and extract structured information.
 ${partNote}
 ${languageDirective(lang)}

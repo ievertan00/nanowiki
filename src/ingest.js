@@ -58,7 +58,10 @@ function mergeUpdates(updateLists) {
   return [...byNote.entries()].map(([note, additions]) => ({ note, addition: additions.join('\n\n') }));
 }
 
-export async function ingestSource(config, { sourceContent, sourceTitle, candidates = [], providerName = 'default' }, OpenAIClient = OpenAI) {
+// personaText/structureText are optional pass-1-only guidance loaded from
+// <vault>/templates/ (see templates.js) — applied to the extraction/summary call
+// for every chunk, not to the literature-note format pass or the fan-out updates.
+export async function ingestSource(config, { sourceContent, sourceTitle, candidates = [], providerName = 'default', personaText, structureText }, OpenAIClient = OpenAI) {
   const { client, model } = getProvider(config, providerName, OpenAIClient);
   const lang = config.language || 'zh';
 
@@ -68,7 +71,7 @@ export async function ingestSource(config, { sourceContent, sourceTitle, candida
   const updateLists = [];
   for (let i = 0; i < chunks.length; i++) {
     const chunkInfo = chunks.length > 1 ? { index: i, total: chunks.length } : null;
-    const { system: sys1, user: usr1 } = getExtractionPrompt(chunks[i], sourceTitle, candidates, lang, chunkInfo);
+    const { system: sys1, user: usr1 } = getExtractionPrompt(chunks[i], sourceTitle, candidates, lang, chunkInfo, { personaText, structureText });
     const extraction = await client.chat.completions.create({
       model,
       messages: [{ role: 'system', content: sys1 }, { role: 'user', content: usr1 }],

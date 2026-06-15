@@ -11,6 +11,7 @@ import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki, synt
 import { ingestSource, updateNote } from '../src/ingest.js';
 import { lintWiki, consolidateDomains, applyLintOps, checkCitations, renameToSchema } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
+import { loadPersona, loadStructure } from '../src/templates.js';
 import { syncSourceMarkers } from '../src/validator.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
 import pdfParse from 'pdf-parse';
@@ -76,6 +77,21 @@ function warnCollision(savedPath, noteTitle) {
   appendLog(config.wikiPath, 'collision', noteTitle);
 }
 
+// --persona/--structure load <vault>/templates/{personas,structures}/<name>.md
+// (see templates.js); a name that doesn't resolve to a file is a hard error so a
+// typo'd flag never silently does nothing.
+function resolveTemplates(cmdOptions) {
+  try {
+    return {
+      personaText: loadPersona(config.wikiPath, cmdOptions.persona),
+      structureText: loadStructure(config.wikiPath, cmdOptions.structure)
+    };
+  } catch (e) {
+    console.error(chalk.red(e.message));
+    process.exit(1);
+  }
+}
+
 // ── init ──────────────────────────────────────────────────────────────────────
 
 // Bootstrap a fresh vault (the four dirs + seeded wiki-config.json + WIKI.md) in
@@ -102,13 +118,16 @@ program
   .command('ask')
   .argument('<question>')
   .option('--type <type>', 'Force note type (atomic, literature)')
+  .option('--persona <name>', 'Apply a persona template from templates/personas/ to the pass-1 answer')
+  .option('--structure <name>', 'Apply a structure template from templates/structures/ as a focus-area checklist for the pass-1 answer')
   .action(async (question, cmdOptions) => {
     const options = program.opts();
+    const { personaText, structureText } = resolveTemplates(cmdOptions);
     console.log(chalk.blue(`Answering... (provider: ${options.provider})`));
 
     // Pass 1: free-form answer. Interactive refinement loops on this raw answer;
     // the schema-bearing format pass runs exactly once, at save time.
-    let answer = await answerQuestion(config, { question, providerName: options.provider });
+    let answer = await answerQuestion(config, { question, providerName: options.provider, personaText, structureText });
 
     if (process.stdin.isTTY && process.stdout.isTTY) {
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -119,7 +138,7 @@ program
         const followUp = (await rl.question(chalk.cyan('> '))).trim();
         if (!followUp) continue;
         console.log(chalk.blue('Updating answer...'));
-        answer = await refineAnswer(config, { answer, followUp, providerName: options.provider });
+        answer = await refineAnswer(config, { answer, followUp, providerName: options.provider, personaText, structureText });
       }
       rl.close();
     }
@@ -262,9 +281,12 @@ program
   .command('ingest')
   .argument('<file...>')
   .option('--force', 'Re-ingest a source that was already ingested')
+  .option('--persona <name>', 'Apply a persona template from templates/personas/ to the pass-1 extraction')
+  .option('--structure <name>', 'Apply a structure template from templates/structures/ as a focus-area checklist for the pass-1 extraction')
   .action(async (fileParts, cmdOptions) => {
     const arg = fileParts.join(' ').trim();
     const options = program.opts();
+    const { personaText, structureText } = resolveTemplates(cmdOptions);
 
     // A URL is fetched via a domain adapter and saved into sources/; otherwise
     // resolve a bare filename against sources/, then the literal path (cwd/absolute).
@@ -332,7 +354,9 @@ program
       sourceContent,
       sourceTitle,
       candidates,
-      providerName: options.provider
+      providerName: options.provider,
+      personaText,
+      structureText
     });
 
     // Save literature note
