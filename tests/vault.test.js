@@ -27,17 +27,30 @@ describe('vault management', () => {
     const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'wiki-config.json'), 'utf8'));
     assert.deepStrictEqual(config, { language: 'en', domains: {} });
     assert.ok(fs.existsSync(path.join(tempDir, 'WIKI.md')));
+
+    for (const relPath of [
+      'templates/personas/skeptical-reviewer.md',
+      'templates/personas/systems-architect.md',
+      'templates/personas/feynman-tutor.md',
+      'templates/structures/api-eval.md',
+      'templates/structures/system-design.md',
+      'templates/structures/paper-summary.md'
+    ]) {
+      assert.ok(fs.existsSync(path.join(tempDir, relPath)), `${relPath} should exist`);
+    }
   });
 
   test('initVault is idempotent — existing config and WIKI.md are never overwritten', () => {
     initVault(tempDir);
     fs.writeFileSync(path.join(tempDir, 'wiki-config.json'), '{"language":"en","domains":{"ai":["llm"]}}');
     fs.writeFileSync(path.join(tempDir, 'WIKI.md'), 'human-edited');
+    fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'skeptical-reviewer.md'), 'user-modified');
 
     initVault(tempDir);
 
     assert.match(fs.readFileSync(path.join(tempDir, 'wiki-config.json'), 'utf8'), /"ai"/);
     assert.strictEqual(fs.readFileSync(path.join(tempDir, 'WIKI.md'), 'utf8'), 'human-edited');
+    assert.strictEqual(fs.readFileSync(path.join(tempDir, 'templates', 'personas', 'skeptical-reviewer.md'), 'utf8'), 'user-modified');
   });
 
   test('getVaultFiles lists .md basenames from notes/ only', () => {

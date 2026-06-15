@@ -13,12 +13,13 @@ directory.** If the user runs Claude Code / Gemini CLI in `D:\wiki`, the vault i
 1. If an explicit `--vault <path>` argument is given, use it.
 2. Otherwise, use the current working directory.
 
-A vault contains: `sources/`, `notes/`, `moc/`, `meta/`, `wiki-config.json`, and
-`WIKI.md`. A fresh, empty directory is a valid vault — on the first run the maintenance
-helper scaffolds everything automatically: it creates the four subdirectories, writes a
-default `wiki-config.json` (`{ "language": "zh", "domains": {} }`), and generates a
-default `WIKI.md` from the bundled `WIKI.template.md`. This scaffolding is idempotent —
-existing files are never overwritten — so you don't need to create these yourself.
+A vault contains: `sources/`, `notes/`, `moc/`, `meta/`, `templates/personas/`,
+`templates/structures/`, `wiki-config.json`, and `WIKI.md`. A fresh, empty directory is
+a valid vault — on the first run the maintenance helper scaffolds everything
+automatically: it creates the six subdirectories, writes a default `wiki-config.json`
+(`{ "language": "zh", "domains": {} }`), and generates a default `WIKI.md` from the
+bundled `WIKI.template.md`. This scaffolding is idempotent — existing files are never
+overwritten — so you don't need to create these yourself.
 
 ## Output language
 
