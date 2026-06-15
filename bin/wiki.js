@@ -118,8 +118,8 @@ program
   .command('ask')
   .argument('<question>')
   .option('--type <type>', 'Force note type (atomic, literature)')
-  .option('--persona <name>', 'Apply a persona template from templates/personas/ to the pass-1 answer')
-  .option('--structure <name>', 'Apply a structure template from templates/structures/ as a focus-area checklist for the pass-1 answer')
+  .option('-p, --persona <name>', 'Apply a persona template from templates/personas/ to the pass-1 answer')
+  .option('-s, --structure <name>', 'Apply a structure template from templates/structures/ as a focus-area checklist for the pass-1 answer')
   .action(async (question, cmdOptions) => {
     const options = program.opts();
     const { personaText, structureText } = resolveTemplates(cmdOptions);
@@ -281,8 +281,8 @@ program
   .command('ingest')
   .argument('<file...>')
   .option('--force', 'Re-ingest a source that was already ingested')
-  .option('--persona <name>', 'Apply a persona template from templates/personas/ to the pass-1 extraction')
-  .option('--structure <name>', 'Apply a structure template from templates/structures/ as a focus-area checklist for the pass-1 extraction')
+  .option('-p, --persona <name>', 'Apply a persona template from templates/personas/ to the pass-1 extraction')
+  .option('-s, --structure <name>', 'Apply a structure template from templates/structures/ as a focus-area checklist for the pass-1 extraction')
   .action(async (fileParts, cmdOptions) => {
     const arg = fileParts.join(' ').trim();
     const options = program.opts();

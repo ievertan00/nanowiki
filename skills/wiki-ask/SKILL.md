@@ -1,7 +1,7 @@
 ---
 name: wiki-ask
 description: Answer a question and save it as a structured Obsidian wiki note. Two-pass — answer the question well, then format the answer into the note schema, assign domain/topic, link only to existing notes, and regenerate the vault's MOC/index/log. Use when the user runs /wiki-ask or asks to "add a note to the wiki", "ask the wiki", or capture an answer into their Obsidian vault. The model behind this CLI is the generator — no API keys needed.
-argument-hint: "<question> [--lang zh|en] [--type atomic|literature] [--persona <name>] [--structure <name>] [--vault <path>]"
+argument-hint: "<question> [--lang zh|en] [--type atomic|literature] [-p|--persona <name>] [-s|--structure <name>] [--vault <path>]"
 ---
 
 # wiki-ask
@@ -24,13 +24,13 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
 ## Steps
 
 1. **Resolve** the vault path and output language (see `note-schema.md`). Parse
-   `--type`, `--lang`, `--persona`, `--structure`, `--vault` out of the argument; the
+   `--type`, `--lang`, `-p`/`--persona`, `-s`/`--structure`, `--vault` out of the argument; the
    remainder is the question.
 
 2. **Gather context.** List the basenames in `notes/` (the existing-notes list) and
    read the `domains` taxonomy from `wiki-config.json`.
 
-   If `--persona <name>` or `--structure <name>` was given, read
+   If `-p`/`--persona <name>` or `-s`/`--structure <name>` was given, read
    `<vault>\templates\personas\<name>.md` / `<vault>\templates\structures\<name>.md`.
    Error if a named file doesn't exist (`Persona not found: <name> (looked in
    <vault>\templates\personas\<name>.md)`, same wording for structures). These are

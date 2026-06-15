@@ -24,15 +24,15 @@ We talk to LLMs every day, but those conversations are scattered — across brow
 
 ## Architecture
 
-The vault is built from four layers, each with a clear owner:
+The vault is built from five layers, each with a clear owner:
 
 | Layer      | Owner       | What it holds                                                                   |
 | ---------- | ----------- | ------------------------------------------------------------------------------- |
 | `sources/` | **You**     | Raw inputs — articles, papers, transcripts, drafts. Immutable.                  |
 | `notes/`   | **The LLM** | All wiki pages, flat. Organization is frontmatter + `[[links]]`, never folders. |
 | `moc/`     | **The CLI** | Per-domain Maps of Content, auto-regenerated after every change.                |
-| `meta/`    | **The CLI** | The full note index, lint reports, and an append-only operation log.            |
-| `templates/` | **You**   | Reusable persona/structure text blocks for `ask`/`ingest` (`--persona`, `--structure`). |
+| `meta/`    | **The CLI** | The full note index, lint reports, dead-link/question worklists, and an append-only operation log. |
+| `templates/` | **You**   | Persona/focus-area text blocks for `ask`/`ingest` (`-p`/`--persona`, `-s`/`--structure`), seeded with defaults on `init`. |
 
 ### Vault Structure
 
@@ -44,12 +44,15 @@ wiki-vault/
 │   ├── ai.md
 │   └── engineering.md
 ├── meta/
-│   ├── index.md      ← full note catalog (auto-generated)
-│   ├── lint-<date>.md ← health-check reports
-│   └── log.md        ← append-only, grep-friendly operation log
+│   ├── index.md          ← full note catalog (auto-generated)
+│   ├── lint-<date>.md    ← health-check reports (wiki lint)
+│   ├── questions.md      ← worklist: Open Questions + wanted-notes (wiki questions)
+│   ├── wanted-notes.md   ← dead-link wishlist — notes referenced but not yet created
+│   ├── ingested.json     ← content-hash ledger so `ingest` is idempotent
+│   └── log.md            ← append-only, grep-friendly operation log
 ├── templates/
-│   ├── personas/     ← reusable voice/framing text blocks (--persona <name>)
-│   └── structures/   ← reusable focus-area checklists (--structure <name>)
+│   ├── personas/     ← reusable voice/framing text blocks (-p/--persona <name>), seeded with defaults
+│   └── structures/   ← reusable focus-area checklists (-s/--structure <name>), seeded with defaults
 ├── wiki-config.json  ← live taxonomy (domains/topics) + overrides
 └── WIKI.md           ← the schema document, co-evolved by you and the LLM
 ```
@@ -92,7 +95,7 @@ Two invariants are enforced **in code**, independent of the LLM:
 
 ## Workflows
 
-There are five operations, available in both front ends (CLI: `wiki <cmd>`, skill: `/wiki-<cmd>`):
+There are five core operations, available in both front ends (CLI: `wiki <cmd>`, skill: `/wiki-<cmd>`):
 
 | Operation            | What it does                                                                           |
 | -------------------- | -------------------------------------------------------------------------------------- |
@@ -101,6 +104,16 @@ There are five operations, available in both front ends (CLI: `wiki <cmd>`, skil
 | `ingest <file\|url>` | Write a literature note for a source, then fan out updates into existing notes.        |
 | `rewrite <file>`     | Reformat a draft or rough file into the note schema (Human Insight preserved).         |
 | `lint`               | Health-check the vault: consolidate domains, find contradictions, orphans, thin notes. |
+
+Three more commands round out the CLI but have no skill counterpart — they're either how
+the vault gets bootstrapped or pure-code maintenance that needs no LLM-as-generator front
+end:
+
+| Command                  | What it does                                                                                                        |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `init [path]`            | Bootstrap a vault: `sources/`, `notes/`, `moc/`, `meta/`, `templates/` (with seeded personas/structures), `wiki-config.json`, `WIKI.md`. The only command that runs **without** a configured `WIKI_PATH`. |
+| `update <note> "<info>"` | Deliberately evolve one existing note: the LLM integrates new information in place, Human Insight is preserved, and a deterministic check guarantees no existing `Source Facts` are lost. |
+| `questions`              | No LLM call — harvest every note's `## Open Questions` plus the `wanted-notes.md` dead-link wishlist into `meta/questions.md`, a worklist to feed back into `ask`. |
 
 ### The multi-round `ask` loop
 
@@ -178,17 +191,70 @@ wiki rewrite rough-notes.md --type literature
 
 ### Personas & focus-area structures
 
-`templates/personas/<name>.md` and `templates/structures/<name>.md` are reusable, user-maintained text blocks you can select per-invocation on `ask` and `ingest`:
+`templates/personas/<name>.md` and `templates/structures/<name>.md` are reusable,
+user-maintained text blocks you can select per-invocation on `ask` and `ingest`:
 
 ```powershell
-wiki ask "What is attention?" --persona beginner
-wiki ingest paper.pdf --structure performance-notes
+wiki ask "What is attention?" -p beginner
+wiki ingest paper.pdf -s system-design
 ```
 
-- **A persona** (`--persona <name>`) shapes the *voice/framing* of the pass-1 answer or source summary — e.g. "explain like I'm new to this" or "critical, skeptical reviewer."
-- **A structure** (`--structure <name>`) is a checklist of aspects the pass-1 output should cover where relevant — e.g. "always note performance numbers, limitations, and alternatives considered" — so the LLM doesn't neglect things you habitually care about.
+- **A persona** (`-p`/`--persona <name>`) shapes the *voice/framing* of the pass-1 answer
+  or source summary — e.g. "explain like I'm new to this" or "critical, skeptical reviewer."
+- **A structure** (`-s`/`--structure <name>`) is a checklist of aspects the pass-1 output
+  should cover where relevant — e.g. "always note performance numbers, limitations, and
+  alternatives considered" — so the LLM doesn't neglect things you habitually care about.
 
-Both apply to **pass 1 only**: they shape the free-form answer or source summary, never the note schema itself — a richer pass-1 output simply gives pass 2 more to work with when it fills `## Source Facts`. Omitting both flags is a no-op, and naming a template that doesn't exist is an error before any LLM call.
+Both apply to **pass 1 only**: they shape the free-form answer or source summary, never the
+note schema itself — a richer pass-1 output simply gives pass 2 more to work with when it
+fills `## Source Facts`. Omitting both flags is a byte-for-byte no-op, and naming a
+template that doesn't resolve to a file is an error before any LLM call.
+
+#### Seeded defaults
+
+`wiki init` seeds both directories with a starter set on first run — idempotent, so your
+own files are never overwritten or renamed. These are curated from real personal-vault
+usage, not placeholders:
+
+| Persona                      | Framing                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
+| `skeptical-reviewer`          | 挑剔的审稿人：追问证据，区分"已证实事实/推论/猜测"，主动指出局限与利益冲突。                  |
+| `beginner-explainer`          | 新手友好：先给一句话定位，术语首次出现即解释，多用类比，由浅入深。                          |
+| `investor-decisionmaker`      | 投资/决策者视角：每段落落到机会、风险与可执行的下一步，标注短期 vs 中长期。                  |
+| `systems-architect`           | Pragmatic principal architect: operational constraints, scaling bottlenecks, failure modes, security boundaries. |
+| `feynman-tutor`                | Feynman technique: plain language, intuitive analogies, "why" before "how."                |
+
+| Structure                        | Focus areas                                                                            |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `api-eval`                         | DX, performance, ecosystem fit, alternatives — for evaluating a library or API.            |
+| `system-design`                    | Bottlenecks, state & storage, failover, CAP/cost/complexity trade-offs.                    |
+| `paper-summary`                    | Core hypothesis, methodology, key benchmarks, limitations.                                 |
+| `paper-book-summary`               | 基本信息、核心论点、研究方法、关键发现、与既有知识的关系、局限性、实践启示、延伸问题。      |
+| `technology-deepdive`              | 技术原理、架构、性能与基准、成熟度与应用现状、替代方案、局限与开放问题。                    |
+| `company-competitor-deepdive`      | 公司概况、商业模式、产品技术、竞争格局、财务、团队治理、SWOT、风险、近期动态与展望。        |
+| `industry-research-report`         | 麦肯锡/贝恩式行业研究报告骨架：执行摘要、PEST、市场规模、产业链、竞争格局、趋势、风险、结论。 |
+
+Edit these files freely, or add your own `<name>.md` — they're yours the moment `init`
+writes them.
+
+#### Flexible name resolution
+
+`-p`/`--persona <name>` and `-s`/`--structure <name>` don't require the exact filename.
+`loadTemplate` (`src/templates.js`) resolves `<name>` against `templates/<kind>/*.md` in
+order, stopping at the first tier that produces a result:
+
+1. **Exact path**, including a `.md` extension you supply yourself — so a name containing
+   `/` or `\` is treated as a literal path, not matched against the directory.
+2. **Case-insensitive exact match** on the filename — `Skeptical-Reviewer` finds
+   `skeptical-reviewer.md`.
+3. **Unique prefix match** — `-s system` finds `system-design.md` if it's the only
+   structure starting with "system".
+4. **Unique substring match** — `-p reviewer` finds `skeptical-reviewer.md`.
+
+If a tier produces more than one match, the command fails immediately with
+`Ambiguous persona name "design": matches software-design, system-design` rather than
+silently picking one. If no tier matches anything, it's
+`Persona not found: <name> (looked in <path>)` — a typo'd flag never silently does nothing.
 
 ### How the vault maintains itself
 
@@ -197,6 +263,97 @@ Three mechanisms keep the vault navigable and healthy without you organizing any
 - **Maps of Content (`moc/`)** — after every mutating command, the CLI regenerates `moc/<domain>.md` (notes grouped by topic), the full catalog `meta/index.md`, and the domains block of `WIKI.md` — all derived purely from frontmatter. These files are owned by the CLI; hand edits are overwritten.
 - **Operation log (`meta/log.md`)** — an append-only, grep-friendly record of every operation: notes created and updated, slug collisions deflected, per-target outcomes of ingest fan-outs. When you wonder "what changed and when," the answer is one search away.
 - **Lint (`wiki lint`)** — a periodic LLM health-check that consolidates duplicate domains and reports contradictions, orphan notes, thin notes, and missing links to `meta/lint-<date>.md`. Machine-applicable link fixes ship alongside the prose report as proposals; `--fix` applies the safe subset (typed links where both endpoints exist) in code — everything else stays a human decision.
+
+#### Demo: a MoC, derived purely from frontmatter
+
+Two notes with `domain: Computer Science` / `topic: Networking` and `domain: Writing` /
+`topic: Note Taking` produce two files under `moc/` — no manual filing, ever:
+
+```markdown
+<!-- moc/Computer Science.md -->
+## Networking
+- [[tcp-vs-udp-networking|TCP vs UDP Networking]]
+```
+
+```markdown
+<!-- moc/Writing.md -->
+## Note Taking
+- [[rough-notes|Rough notes]]
+- [[rough-notes-content|Rough Notes Content]]
+- [[rough-notes-inventory|Rough Notes Inventory]]
+```
+
+Add a third note tagged `domain: Computer Science` / `topic: Algorithms` and the next
+mutating command adds a new `## Algorithms` section to `moc/Computer Science.md` —
+the topic groupings are recomputed from frontmatter every time, not appended to.
+
+#### Demo: a lint report
+
+`wiki lint` walks the whole vault (sharded into per-domain chunks for large vaults — the
+same ~48k-char budget `ingest` uses) and writes `meta/lint-<date>.md`. A real run over a
+small vault found, among other things:
+
+```markdown
+## Orphan Notes
+以下笔记没有任何其他笔记指向它（即没有有效导入链接）：
+- [tcp-vs-udp-networking.md](...)：作为一个独立的网络协议笔记，目前没有任何其他页面包含指向它的链接。
+- [rough-notes.md](...) 虽在 `Connections` 章节中自引用了 `[[rough-notes]]`，但除自引用外，
+  没有来自其他笔记的导入链接，实质上也是孤立笔记。
+
+## Concepts Without Pages
+以下是在多篇笔记中被提及、但在知识库中尚未建立专属页面的重要概念：
+- **信息捕获 / 知识捕获 (Information Capture / Capture Mechanism)**：在 `rough-notes.md` 和
+  `rough-notes-content.md` 中多次提到"捕获机制"……应当为"知识捕获"或"收件箱工作流"建立一个专属页面。
+- **网络协议 (Network Protocols)**：`tcp-vs-udp-networking.md` 中提到了 TCP 和 UDP 协议。
+  随着知识库中网络相关笔记的增多，建议建立一个"网络协议"总览页面。
+
+## Suggested Actions
+按优先顺序排列的改进建议：
+1. **充实网络协议笔记**：为 [tcp-vs-udp-networking.md](...) 补充应用层协议对比……
+2. **修复草稿笔记的空泛性**：将 rough-notes-content.md 和 rough-notes-inventory.md 合并……
+3. **添加缺失链接**：在 rough-notes-content.md 和 rough-notes-inventory.md 之间建立 `related::` 双向关联。
+4. **移除自引用**：清除 rough-notes.md 连接中的 `related:: [[rough-notes]]` 自引用……
+5. **新建概念页面**：创建 **知识捕获 (Knowledge Capture)** 页面……
+```
+
+`lint` writes Markdown in the vault's configured `language`, so a `zh` vault gets a
+Chinese report like the one above. Two of these findings close the loop on their own:
+
+- **Orphan Notes** and **Missing Links** findings that name two *existing* notes turn into
+  machine-applicable `related::`/`extends::` ops in the report's hidden JSON block —
+  `wiki lint --fix` wires them up.
+- **Concepts Without Pages** are exactly the gaps `wiki ask` is for: "信息捕获" and "网络协议"
+  are now candidate questions — see the closed-loop cycle below.
+
+### Closed loops: from dead link to new note
+
+`ask`, `ingest`, `update`, `questions`, and `lint` aren't five separate features — they're
+stages of one cycle that turns the vault's own gaps into your next prompts:
+
+1. **A note tries to link to something that doesn't exist yet.** `removeDeadLinks` strips
+   the `[[link]]` before save — dead links never ship — and records it in
+   `meta/wanted-notes.md`, deduped by target + wanting-note, auto-pruned once the target
+   is created.
+2. **`wiki questions`** (pure code, no LLM) merges every note's `## Open Questions` with
+   `meta/wanted-notes.md` into `meta/questions.md` — one worklist of "what the wiki itself
+   wants to know next."
+3. **You pick one and run `wiki ask`.** The new note answers it, ends with its own
+   `## Open Questions`, and may itself draw a dead link — feeding step 1 again.
+4. **`wiki update <note> "<info>"`** is the targeted alternative to a fresh `ask`: you hand
+   the wiki a piece of information and the note it belongs to, and the LLM rewrites that
+   note to integrate it. `lostSourceFacts` then checks every pre-existing `## Source Facts`
+   bullet survived the rewrite — if one was dropped, the original note is kept and the new
+   information is appended as a bullet instead. Integration quality is best-effort;
+   **content is never lost**.
+5. **`wiki lint`** is the periodic audit over all of this: it consolidates near-duplicate
+   domains and flags contradictions, orphans, thin notes, and missing links — the
+   "Concepts Without Pages" and "Orphan Notes" findings above are this cycle's gaps surfacing
+   in aggregate. `--fix` applies the safe `related::`/`extends::` ops in code; everything
+   else is a human call.
+
+Nothing in this cycle requires you to organize anything — domains, topics, filenames
+(`renameToSchema`), MOCs, and the index are all derived from frontmatter and regenerated
+automatically after every mutating command.
 
 ## CLI Installation & Configuration
 

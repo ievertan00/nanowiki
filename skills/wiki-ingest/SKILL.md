@@ -1,7 +1,7 @@
 ---
 name: wiki-ingest
 description: Ingest a source document or URL into the Obsidian wiki — write a literature note for it and fan out updates to existing notes it touches. Accepts a local file or an http(s) URL (fetched to sources/ first; YouTube links become transcripts). Extracts a summary plus targeted additions, formats the summary as a literature note, integrates each addition into an existing note (preserving Human Insight), skips targets that don't exist, and regenerates the vault's MOC/index/log. Use when the user runs /wiki-ingest or asks to "ingest this paper/article/URL", "process this source into the wiki". The model behind this CLI is the generator — no API keys needed.
-argument-hint: "<name-in-sources | @path | path | url> [--lang zh|en] [--persona <name>] [--structure <name>] [--vault <path>]"
+argument-hint: "<name-in-sources | @path | path | url> [--lang zh|en] [-p|--persona <name>] [-s|--structure <name>] [--vault <path>]"
 ---
 
 # wiki-ingest
@@ -25,7 +25,7 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 
 1. **Resolve** the vault path and output language. The vault is the directory where the
    CLI was started (the current working directory) unless `--vault` overrides it — see
-   `note-schema.md`. Parse `--lang`, `--persona`, `--structure`, `--vault`; the
+   `note-schema.md`. Parse `--lang`, `-p`/`--persona`, `-s`/`--structure`, `--vault`; the
    remainder is the file argument. Normalize it: strip a leading `@` (the
    file-reference marker CLIs like Claude Code prepend) and any surrounding quotes.
 
@@ -61,7 +61,7 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 2. **Gather context.** List `notes/` basenames (existing-notes list) and read the
    `domains` taxonomy from `wiki-config.json`.
 
-   If `--persona <name>` or `--structure <name>` was given, read
+   If `-p`/`--persona <name>` or `-s`/`--structure <name>` was given, read
    `<vault>\templates\personas\<name>.md` / `<vault>\templates\structures\<name>.md`.
    Error if a named file doesn't exist (`Persona not found: <name> (looked in
    <vault>\templates\personas\<name>.md)`, same wording for structures). These are

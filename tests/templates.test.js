@@ -32,6 +32,19 @@ describe('templates', () => {
     test('throws a descriptive error when the named template is missing', () => {
       assert.throws(() => loadPersona(tempDir, 'missing'), /Persona not found: missing/);
     });
+
+    test('performs case-insensitive, prefix, or substring match', () => {
+      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'skeptical-reviewer.md'), 'Skeptical.');
+      assert.strictEqual(loadPersona(tempDir, 'Skeptical-Reviewer'), 'Skeptical.');
+      assert.strictEqual(loadPersona(tempDir, 'skeptical'), 'Skeptical.');
+      assert.strictEqual(loadPersona(tempDir, 'reviewer'), 'Skeptical.');
+    });
+
+    test('throws on ambiguous match', () => {
+      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'skeptical-reviewer.md'), 'Skeptical.');
+      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'systems-architect.md'), 'Systems.');
+      assert.throws(() => loadPersona(tempDir, 's'), /Ambiguous persona name "s": matches skeptical-reviewer, systems-architect/);
+    });
   });
 
   describe('loadStructure', () => {
@@ -46,6 +59,19 @@ describe('templates', () => {
 
     test('throws a descriptive error when the named template is missing', () => {
       assert.throws(() => loadStructure(tempDir, 'missing'), /Structure not found: missing/);
+    });
+
+    test('performs case-insensitive, prefix, or substring match', () => {
+      fs.writeFileSync(path.join(tempDir, 'templates', 'structures', 'system-design.md'), 'CAP theorem.');
+      assert.strictEqual(loadStructure(tempDir, 'System-Design'), 'CAP theorem.');
+      assert.strictEqual(loadStructure(tempDir, 'system'), 'CAP theorem.');
+      assert.strictEqual(loadStructure(tempDir, 'design'), 'CAP theorem.');
+    });
+
+    test('throws on ambiguous match', () => {
+      fs.writeFileSync(path.join(tempDir, 'templates', 'structures', 'system-design.md'), 'CAP.');
+      fs.writeFileSync(path.join(tempDir, 'templates', 'structures', 'software-design.md'), 'Software.');
+      assert.throws(() => loadStructure(tempDir, 'design'), /Ambiguous structure name "design": matches software-design, system-design/);
     });
   });
 });

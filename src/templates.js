@@ -7,9 +7,38 @@ import path from 'node:path';
 // hard error so a typo'd flag never silently does nothing.
 function loadTemplate(wikiPath, kind, label, name) {
   if (!name) return null;
-  const filePath = path.join(wikiPath, 'templates', kind, `${name}.md`);
+  let filePath = path.join(wikiPath, 'templates', kind, `${name}.md`);
   if (!fs.existsSync(filePath)) {
-    throw new Error(`${label} not found: ${name} (looked in ${filePath})`);
+    if (!name.includes('/') && !name.includes('\\')) {
+      const dirPath = path.join(wikiPath, 'templates', kind);
+      if (fs.existsSync(dirPath)) {
+        const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.md'));
+        const exactMatch = files.find(f => f.toLowerCase() === `${name.toLowerCase()}.md`);
+        if (exactMatch) {
+          filePath = path.join(dirPath, exactMatch);
+        } else {
+          const prefixMatches = files.filter(f => f.toLowerCase().startsWith(name.toLowerCase()));
+          if (prefixMatches.length === 1) {
+            filePath = path.join(dirPath, prefixMatches[0]);
+          } else if (prefixMatches.length > 1) {
+            throw new Error(`Ambiguous ${label.toLowerCase()} name "${name}": matches ${prefixMatches.map(f => path.basename(f, '.md')).join(', ')}`);
+          } else {
+            const substringMatches = files.filter(f => f.toLowerCase().includes(name.toLowerCase()));
+            if (substringMatches.length === 1) {
+              filePath = path.join(dirPath, substringMatches[0]);
+            } else if (substringMatches.length > 1) {
+              throw new Error(`Ambiguous ${label.toLowerCase()} name "${name}": matches ${substringMatches.map(f => path.basename(f, '.md')).join(', ')}`);
+            } else {
+              throw new Error(`${label} not found: ${name} (looked in ${filePath})`);
+            }
+          }
+        }
+      } else {
+        throw new Error(`${label} not found: ${name} (looked in ${filePath})`);
+      }
+    } else {
+      throw new Error(`${label} not found: ${name} (looked in ${filePath})`);
+    }
   }
   return fs.readFileSync(filePath, 'utf8').trim();
 }
