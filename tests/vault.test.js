@@ -45,7 +45,17 @@ describe('vault management', () => {
       'templates/personas/analogical.md',
       'templates/structures/api-eval.md',
       'templates/structures/system-design.md',
-      'templates/structures/paper-summary.md'
+      'templates/structures/paper-summary.md',
+      'templates/structures/swot.md',
+      'templates/structures/five-forces.md',
+      'templates/structures/pest.md',
+      'templates/structures/business-model-canvas.md',
+      'templates/structures/value-chain.md',
+      'templates/structures/3c.md',
+      'templates/structures/mece.md',
+      'templates/structures/aarrr.md',
+      'templates/structures/jtbd.md',
+      'templates/structures/iteration-loop.md'
     ]) {
       assert.ok(fs.existsSync(path.join(tempDir, relPath)), `${relPath} should exist`);
     }
