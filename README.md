@@ -130,10 +130,22 @@ The loop then continues across days: each saved note ends with `Open Questions`,
 
 ```powershell
 wiki ingest attention-paper.md                 # bare name resolves under <vault>/sources/
+wiki ingest attention-paper.pdf                # PDF text is extracted automatically
 wiki ingest https://example.com/great-post    # URLs are fetched into sources/ first
 ```
 
 A single source may update many notes: the LLM extracts a summary plus targeted additions, writes a `literature` note, and integrates each addition into the existing note it belongs to. Updates that target a note which doesn't exist are skipped — never invented.
+
+**Supported source formats:**
+
+| Source       | CLI (`wiki ingest`)                                          | Skill (`/wiki-ingest`)                                              |
+| ------------ | ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| Markdown/text | read directly                                                 | read directly                                                          |
+| PDF           | text extracted via `pdf-parse` (text-based PDFs only)        | read via the agent's Read tool (chunked by page range if >20 pages)   |
+| Image         | not supported                                                 | read visually and transcribed by the agent                            |
+| Web/YouTube URL | fetched to `sources/` via Jina Reader, then ingested       | fetched and reduced to Markdown by the agent's own fetch tool          |
+
+The skill front end is the LLM doing its own reading, so it covers scanned PDFs and standalone images the CLI's `pdf-parse` path cannot.
 
 ### Importing your drafts
 

@@ -61,7 +61,16 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 2. **Gather context.** List `notes/` basenames (existing-notes list) and read the
    `domains` taxonomy from `wiki-config.json`.
 
-3. **Pass 1 — Extract.** Read the whole source and produce, conceptually:
+3. **Pass 1 — Extract.** Read the whole source with your Read tool:
+   - **PDF** (`.pdf`): Read extracts the text directly. If the PDF has more than 20
+     pages, read it in page-range chunks (`pages: "1-20"`, `"21-40"`, ...) and
+     concatenate the results before extracting.
+   - **Image** (`.png`, `.jpg`, etc.): Read renders the image for you to view —
+     transcribe its visible content (text, diagrams, charts, labels) and use that
+     transcription as the source content.
+   - **Everything else**: Read returns the file's text content directly.
+
+   Then produce, conceptually:
    ```json
    {
      "summary": "thorough summary of the source's key facts, arguments, insights",

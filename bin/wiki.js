@@ -13,6 +13,7 @@ import { lintWiki, consolidateDomains, applyLintOps, checkCitations } from '../s
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
 import { syncSourceMarkers } from '../src/validator.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
+import pdfParse from 'pdf-parse';
 import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, hashSource, findStaleSources, renderStaleSources } from '../src/meta.js';
 
 const program = new Command();
@@ -221,7 +222,11 @@ program
         console.error(chalk.red(`File not found: ${arg} (looked in ${path.join(config.wikiPath, 'sources')} and as a literal path)`));
         process.exit(1);
       }
-      sourceContent = fs.readFileSync(localFile, 'utf8');
+      if (path.extname(localFile).toLowerCase() === '.pdf') {
+        sourceContent = (await pdfParse(fs.readFileSync(localFile))).text;
+      } else {
+        sourceContent = fs.readFileSync(localFile, 'utf8');
+      }
       sourceTitle = path.basename(localFile, path.extname(localFile));
     }
 
