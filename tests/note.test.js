@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { saveNote, extractHumanInsight, restoreHumanInsight, appendToSection } from '../src/note.js';
+import { saveNote, schemaName, extractHumanInsight, restoreHumanInsight, appendToSection } from '../src/note.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -100,6 +100,41 @@ describe('saveNote', () => {
 
     ledger = fs.readFileSync(path.join(vault, 'meta', 'wanted-notes.md'), 'utf8');
     assert.doesNotMatch(ledger, /\| Wanted Concept \|/);
+  });
+
+  test('names new notes <domain>-<topic>-<Name> from frontmatter prefix + title arg', () => {
+    const content = `---\ntitle: Transformer\ntype: atomic\ndomain: AI\ntopic: architecture\nupdated: 2020-01-01\n---\n\n## Source Facts\n\nBody.\n`;
+    const { path: saved } = saveNote(vault, { title: 'Transformer', content });
+    assert.strictEqual(path.basename(saved), 'AI-architecture-Transformer.md');
+  });
+
+  test('preserves CJK in domain/topic/title segments', () => {
+    const content = `---\ntitle: 注意力\ntype: atomic\ndomain: 人工智能\ntopic: 架构\nupdated: 2020-01-01\n---\n\n## Source Facts\n\nBody.\n`;
+    const { path: saved } = saveNote(vault, { title: '注意力', content });
+    assert.strictEqual(path.basename(saved), '人工智能-架构-注意力.md');
+  });
+
+  test('falls back to title-only slug when domain or topic is missing', () => {
+    const content = `---\ntitle: Lonely\ntype: atomic\ndomain: AI\nupdated: 2020-01-01\n---\n\n## Source Facts\n\nBody.\n`;
+    const { path: saved } = saveNote(vault, { title: 'Lonely Note', content });
+    assert.strictEqual(path.basename(saved), 'Lonely-Note.md');
+  });
+
+  test('slug param writes to <slug>.md verbatim, ignoring frontmatter for naming', () => {
+    const content = `---\ntitle: Transformer\ntype: atomic\ndomain: AI\ntopic: architecture\nupdated: 2020-01-01\n---\n\n## Source Facts\n\nBody.\n`;
+    const { path: saved } = saveNote(vault, { title: 'whatever', content, slug: 'existing-file', allowOverwrite: true });
+    assert.strictEqual(path.basename(saved), 'existing-file.md');
+  });
+});
+
+describe('schemaName', () => {
+  test('joins domain-topic-title through the slugify rule, preserving CJK', () => {
+    assert.strictEqual(schemaName({ domain: 'AI', topic: '架构', title: 'Transformer 注意力' }), 'AI-架构-Transformer-注意力');
+  });
+
+  test('returns null when domain or topic is missing', () => {
+    assert.strictEqual(schemaName({ domain: 'AI', title: 'x' }), null);
+    assert.strictEqual(schemaName({ topic: 'y', title: 'x' }), null);
   });
 });
 

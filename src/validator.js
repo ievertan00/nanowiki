@@ -4,6 +4,11 @@
 // never shown to the model twice.
 
 const SECTIONS = ['Source Facts', 'Synthesis', 'Connections', 'Speculation', 'Open Questions', 'Human Insight'];
+// Synthesis notes (persisted `wiki query` answers) are a research-report shape, not
+// the atomic fact/inference split — the grounded answer is kept whole, so they use
+// their own section list. See getSynthesisFrontmatterPrompt / synthesize in llm.js.
+const SYNTHESIS_SECTIONS = ['Question', 'Answer', 'Connections', 'Open Questions', 'Human Insight'];
+const NOTE_TYPES = ['atomic', 'literature', 'synthesis'];
 const LINK_TYPES = new Set(['extends', 'contradicts', 'requires', 'examples', 'related']);
 const REQUIRED_KEYS = ['title', 'type', 'domain', 'topic', 'tags', 'created', 'updated'];
 
@@ -81,8 +86,8 @@ export function validateNote(content) {
       }
     }
     const type = block.match(/^type:[^\S\r\n]*(\S+)/m)?.[1];
-    if (type && !['atomic', 'literature'].includes(type)) {
-      errors.push(`type must be "atomic" or "literature" (got "${type}")`);
+    if (type && !NOTE_TYPES.includes(type)) {
+      errors.push(`type must be ${NOTE_TYPES.map(t => `"${t}"`).join(', ')} (got "${type}")`);
     }
     const tagsLine = block.match(/^tags:\s*(.+)$/m)?.[1];
     if (tagsLine) {
@@ -94,9 +99,12 @@ export function validateNote(content) {
     }
   }
 
+  const noteType = text.match(/^type:[^\S\r\n]*(\S+)/m)?.[1];
+  const sections = noteType === 'synthesis' ? SYNTHESIS_SECTIONS : SECTIONS;
+
   let lastIdx = -1;
   let outOfOrder = false;
-  for (const section of SECTIONS) {
+  for (const section of sections) {
     const idx = text.search(new RegExp(`^## ${section}\\s*$`, 'm'));
     if (idx === -1) {
       errors.push(`Missing section: ## ${section}`);
@@ -106,7 +114,7 @@ export function validateNote(content) {
     lastIdx = Math.max(lastIdx, idx);
   }
   if (outOfOrder) {
-    errors.push(`Sections are out of order — required order: ${SECTIONS.map(s => `## ${s}`).join(', ')}`);
+    errors.push(`Sections are out of order — required order: ${sections.map(s => `## ${s}`).join(', ')}`);
   }
 
   for (const m of text.matchAll(/^[^\S\r\n]*(\w[\w-]*)\s*::\s*\[\[/gm)) {

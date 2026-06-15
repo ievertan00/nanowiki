@@ -7,9 +7,9 @@ import readline from 'node:readline/promises';
 import { loadConfig, saveTaxonomy } from '../src/config.js';
 import { initVault, appendLog } from '../src/vault.js';
 import { buildCatalog, selectCandidates } from '../src/retrieve.js';
-import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki } from '../src/llm.js';
+import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki, synthesize } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
-import { lintWiki, consolidateDomains, applyLintOps, checkCitations } from '../src/lint.js';
+import { lintWiki, consolidateDomains, applyLintOps, checkCitations, renameToSchema } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
 import { syncSourceMarkers } from '../src/validator.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
@@ -19,12 +19,29 @@ import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, hashSource,
 const program = new Command();
 let config;
 
-try {
-  config = loadConfig();
-  initVault(config.wikiPath, config);
-} catch (e) {
-  console.error(chalk.red(e.message));
-  process.exit(1);
+// The first positional token is the subcommand (global options like --provider /
+// --lang take a value and are skipped). `init` bootstraps a vault before any
+// WIKI_PATH exists, so it must run without the loadConfig startup that every other
+// command depends on.
+function invokedCommand(argv) {
+  const valued = new Set(['--provider', '--lang']);
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i];
+    if (valued.has(a)) { i++; continue; }
+    if (a.startsWith('-')) continue;
+    return a;
+  }
+  return undefined;
+}
+
+if (invokedCommand(process.argv) !== 'init') {
+  try {
+    config = loadConfig();
+    initVault(config.wikiPath, config);
+  } catch (e) {
+    console.error(chalk.red(e.message));
+    process.exit(1);
+  }
 }
 
 program
@@ -58,6 +75,26 @@ function warnCollision(savedPath, noteTitle) {
   console.warn(chalk.yellow(`Warning: a note with this slug already exists — saved as ${path.basename(savedPath)} instead. Rename or merge it; links and updates can't reach the suffixed file.`));
   appendLog(config.wikiPath, 'collision', noteTitle);
 }
+
+// ── init ──────────────────────────────────────────────────────────────────────
+
+// Bootstrap a fresh vault (the four dirs + seeded wiki-config.json + WIKI.md) in
+// the current directory, or in [path]. Unlike every other command this runs
+// without a configured WIKI_PATH — it's how you create the vault that WIKI_PATH
+// will then point at.
+program
+  .command('init')
+  .argument('[path]', 'Directory to initialize (defaults to the current directory)')
+  .description('Initialize the wiki vault structure in a directory')
+  .action((dir) => {
+    const { lang } = program.opts();
+    // Precedence: explicit [path] arg (resolved against cwd) -> WIKI_PATH from
+    // .env -> cwd. dotenv has already populated process.env from the repo .env.
+    const target = path.resolve(dir || process.env.WIKI_PATH || process.cwd());
+    initVault(target, lang ? { language: lang } : {});
+    console.log(chalk.green(`Initialized wiki vault in ${target}`));
+    console.log(chalk.gray(`Set WIKI_PATH to this path (in .env) to use the vault with the other commands.`));
+  });
 
 // ── ask ──────────────────────────────────────────────────────────────────────
 
@@ -125,12 +162,16 @@ program
 const QUERY_NOTE_LIMIT = 12;
 
 // Closed-world counterpart of `ask`: answer FROM the vault instead of into it.
-// Read-only by design — no note, no source, no taxonomy/MOC churn, no log entry.
+// Read-only by default — no note, no source, no churn. With --save the grounded
+// answer is persisted as a `synthesis` note (a research report that links the notes
+// it drew on) so a good closed-world answer becomes part of the graph instead of
+// vanishing.
 program
   .command('query')
   .argument('<question>')
+  .option('--save', 'Persist the answer as a synthesis note')
   .description('Answer a question from the existing notes only, with [[note]] citations')
-  .action(async (question) => {
+  .action(async (question, cmdOptions) => {
     const options = program.opts();
     const candidates = selectCandidates(buildCatalog(config.wikiPath), question, QUERY_NOTE_LIMIT);
     if (candidates.length === 0) {
@@ -146,6 +187,29 @@ program
     }));
     const answer = await queryWiki(config, { question, notes, providerName: options.provider });
     console.log('\n' + answer);
+
+    if (!cmdOptions.save) return;
+
+    console.log(chalk.blue('\nSaving synthesis...'));
+    // Pin the unformatted answer in sources/ as the source of record, exactly like
+    // `ask` — it is what the note is derived from, so nothing is lost if a later
+    // edit reshapes the note.
+    const sourcePath = saveSource(config.wikiPath, { title: question.slice(0, 60), question, content: answer });
+    const sourceSlug = path.basename(sourcePath, '.md');
+
+    let note = await synthesize(config, { question, answer, providerName: options.provider });
+    note = note.replace(/^source:.*$/m, `source: ${sourceSlug}`);
+
+    const { domain, topic, title } = extractFrontmatter(note);
+    const noteTitle = title || question.slice(0, 60);
+    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: note });
+    if (renamed) warnCollision(savedPath, noteTitle);
+    saveTaxonomy(config.wikiPath, config, domain, topic);
+    appendLog(config.wikiPath, 'synthesize', noteTitle);
+    console.log(chalk.green(`Saved: ${savedPath}`));
+    updateMOC(config.wikiPath);
+    updateIndex(config.wikiPath);
+    updateWikiDomains(config.wikiPath);
   });
 
 // ── rewrite ───────────────────────────────────────────────────────────────────
@@ -304,7 +368,7 @@ program
         // Through saveNote so the update gets the same cleaning, dead-link capture,
         // and `updated:` bump as a fresh note (slugs are slugify-idempotent, so the
         // title `note` resolves back to notePath).
-        saveNote(config.wikiPath, { title: note, content: restoreHumanInsight(updated, humanInsight), allowOverwrite: true });
+        saveNote(config.wikiPath, { title: note, content: restoreHumanInsight(updated, humanInsight), allowOverwrite: true, slug: path.basename(notePath, '.md') });
         updatedCount++;
         derivedNotes.push(path.basename(notePath, '.md'));
         outcomes.push(preserved ? `updated: ${note}` : `updated: ${note} (fallback append — rewrite dropped existing facts)`);
@@ -359,7 +423,7 @@ program
       sourceTitle: 'user addition',
       providerName: options.provider
     });
-    saveNote(config.wikiPath, { title: slug, content: restoreHumanInsight(content, humanInsight), allowOverwrite: true });
+    saveNote(config.wikiPath, { title: slug, content: restoreHumanInsight(content, humanInsight), allowOverwrite: true, slug });
     if (!preserved) console.warn(chalk.yellow('Rewrite dropped existing facts — the addition was appended verbatim instead.'));
 
     appendLog(config.wikiPath, 'update', slug, preserved ? [] : ['fallback append — rewrite dropped existing facts']);
@@ -393,6 +457,15 @@ program
     // Combine similar domains first, then regenerate derived files so the report
     // reflects the consolidated taxonomy.
     const consolidation = await consolidateDomains(config, { providerName: options.provider });
+
+    // Deterministic, code-only: enforce the <domain>-<topic>-<title> filename schema,
+    // rewriting inbound links. Runs after consolidation so canonical domains land in
+    // filenames, and before the regen so derived files reflect the new names.
+    const { renamed, flagged } = renameToSchema(config.wikiPath);
+    let schemaSection = '';
+    if (renamed.length) schemaSection += `## Schema Renames\n\n${renamed.map(r => `- \`${r.from}\` → \`${r.to}\``).join('\n')}\n\n`;
+    if (flagged.length) schemaSection += `## Off-Schema (needs domain/topic)\n\n${flagged.map(s => `- [[${s}]]`).join('\n')}\n\n`;
+
     updateMOC(config.wikiPath);
     updateIndex(config.wikiPath);
     updateWikiDomains(config.wikiPath);
@@ -408,7 +481,7 @@ program
     if (staleSection) staticChecks += `${staleSection}\n`;
 
     const { report: lintReport, ops } = await lintWiki(config, { providerName: options.provider });
-    let report = `${staticChecks}${consolidation}\n${lintReport}`;
+    let report = `${staticChecks}${schemaSection}${consolidation}\n${lintReport}`;
 
     const date = new Date().toISOString().slice(0, 10);
     if (cmdOptions.fix && ops.length) {
@@ -423,7 +496,10 @@ program
     const reportPath = path.join(config.wikiPath, 'meta', `lint-${date}.md`);
     fs.writeFileSync(reportPath, report);
 
-    appendLog(config.wikiPath, 'lint', date);
+    appendLog(config.wikiPath, 'lint', date, [
+      ...renamed.map(r => `renamed: ${r.from} -> ${r.to}`),
+      ...flagged.map(s => `off-schema: ${s}`)
+    ]);
     console.log(chalk.green(`Report saved: ${reportPath}`));
     console.log('\n' + report);
   });

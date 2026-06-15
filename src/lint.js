@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 import { getLintPrompt, getDomainMergePrompt } from './prompts.js';
 import { getProvider } from './provider.js';
-import { appendToSection, saveNote } from './note.js';
+import { appendToSection, saveNote, schemaName } from './note.js';
+import { parseFrontmatter } from './meta.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -296,8 +297,65 @@ export function applyLintOps(wikiPath, ops) {
       results.push(`skipped: ${fromSlug} has no ## Connections section`);
       continue;
     }
-    saveNote(wikiPath, { title: fromSlug, content: updated, allowOverwrite: true });
+    saveNote(wikiPath, { title: fromSlug, content: updated, allowOverwrite: true, slug: fromSlug });
     results.push(`added: ${type}:: [[${toSlug}]] to ${fromSlug}`);
   }
   return results;
+}
+
+// Deterministic, code-only naming pass (no LLM): rename any note whose filename is
+// not <domain>-<topic>-<title> to that schema (via schemaName from note.js), and
+// rewrite inbound [[links]] so none go dead. Notes missing domain or topic are skipped
+// and flagged (they need metadata first). reNameNormalize duplicates `normalize` in
+// src/note.js (not exported) — keep the two in sync by hand.
+const reNameNormalize = s => String(s).toLowerCase().replace(/[\s\-_:：、，。！？]+/g, '').replace(/[^\w一-鿿]/g, '');
+
+// Rewrites every [[link]] whose target normalizes to fromSlug (slug-form or title-form).
+// Links written against the note's `aliases:` are intentionally NOT rewritten — they
+// still resolve (aliases are alias-matched regardless of filename), just non-canonical.
+function rewriteInboundLinks(notesDir, fromSlug, toSlug) {
+  const target = reNameNormalize(fromSlug);
+  for (const f of fs.readdirSync(notesDir).filter(f => f.endsWith('.md'))) {
+    const p = path.join(notesDir, f);
+    const content = fs.readFileSync(p, 'utf8');
+    const updated = content.replace(/\[\[([^\]|]+)(\|[^\]]*)?\]\]/g, (m, t, disp) =>
+      reNameNormalize(t) === target ? `[[${toSlug}${disp || ''}]]` : m);
+    if (updated !== content) fs.writeFileSync(p, updated);
+  }
+}
+
+export function renameToSchema(wikiPath) {
+  const notesDir = path.join(wikiPath, 'notes');
+  if (!fs.existsSync(notesDir)) return { renamed: [], flagged: [] };
+  const files = fs.readdirSync(notesDir).filter(f => f.endsWith('.md'));
+  const taken = new Set(files.map(f => path.basename(f, '.md')));
+
+  const renamed = [];
+  const flagged = [];
+  for (const file of files) {
+    const currentSlug = path.basename(file, '.md');
+    const fm = parseFrontmatter(fs.readFileSync(path.join(notesDir, file), 'utf8'));
+    // schemaName returns null exactly when domain or topic is missing — that IS the
+    // skip+flag signal. Reuses the one slugify rule instead of a local copy.
+    let desired = schemaName({ domain: fm.domain, topic: fm.topic, title: fm.title || currentSlug });
+    if (!desired) { flagged.push(currentSlug); continue; }
+    if (desired === currentSlug) continue; // already conforming
+    if (taken.has(desired)) {
+      // The bare schema name is occupied by another note. If currentSlug is already a
+      // stable `<desired>-N` disambiguation of it, leave it — renaming would just pick a
+      // different suffix every run and oscillate forever. Otherwise claim the next free
+      // suffix. (When the bare name is free, we fall through and rename to it, which also
+      // promotes a stale `<desired>-N` back to the bare name.)
+      if (currentSlug.replace(/-\d+$/, '') === desired) continue;
+      let n = 2;
+      while (taken.has(`${desired}-${n}`)) n++;
+      desired = `${desired}-${n}`;
+    }
+    fs.renameSync(path.join(notesDir, file), path.join(notesDir, `${desired}.md`));
+    taken.delete(currentSlug);
+    taken.add(desired);
+    rewriteInboundLinks(notesDir, currentSlug, desired);
+    renamed.push({ from: currentSlug, to: desired });
+  }
+  return { renamed, flagged };
 }

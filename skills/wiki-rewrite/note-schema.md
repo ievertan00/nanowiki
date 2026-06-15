@@ -102,10 +102,13 @@ Leave this section completely empty (heading only). Reserved for the human autho
 
 ## Filename (slug)
 
-`slug` = the title with every run of characters **not** in `[a-zA-Z0-9一-鿿]` replaced
-by `-`, then trim leading/trailing `-`. Alphanumerics **and** CJK ideographs are
-preserved, so Chinese titles produce Chinese filenames. Save the note to
-`notes/<slug>.md`.
+`slug` = `<domain>-<topic>-<title>` with every run of characters **not** in
+`[a-zA-Z0-9一-鿿]` replaced by `-`, then trim leading/trailing `-`. Alphanumerics **and**
+CJK ideographs are preserved, so Chinese domains/topics/titles produce Chinese filenames.
+Save the note to `notes/<slug>.md`. If the note has no `domain` or `topic`, fall back to
+the title alone. Naming is ultimately **code-owned**: `wiki-maintain.mjs` re-derives this
+name on every run and renames any note that drifts, rewriting inbound links — so just
+write your best name here and let the maintenance script normalize it.
 
 ## Invariants (these hold regardless of the model behind this skill)
 

@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { getContentPrompt, getFormatPrompt, getRefinePrompt, getRepairPrompt, getQueryPrompt } from './prompts.js';
+import { getContentPrompt, getFormatPrompt, getRefinePrompt, getRepairPrompt, getQueryPrompt, getSynthesisFrontmatterPrompt } from './prompts.js';
 import { getProvider } from './provider.js';
 import { validateNote } from './validator.js';
 
@@ -110,6 +110,33 @@ export async function answerQuestion(config, { question, providerName = 'default
 export async function queryWiki(config, { question, notes, providerName = 'default' }, OpenAIClient = OpenAI) {
   const prompt = getQueryPrompt(question, notes, config.language || 'zh');
   return chat(config, providerName, OpenAIClient, prompt);
+}
+
+// Persist a closed-world query answer as a synthesis note. One LLM call for
+// frontmatter only — the grounded answer is kept verbatim, and Connections are
+// derived in code from the [[links]] the answer already cites (deduped). This is
+// the same split as dates/markers: the model judged relevance once (inside the
+// answer), code harvests it deterministically. removeDeadLinks at saveNote drops
+// any [[link]] whose target isn't a real note, so unfounded links can't leak.
+export async function synthesize(config, { question, answer, providerName = 'default' }, OpenAIClient = OpenAI) {
+  const prompt = getSynthesisFrontmatterPrompt(question, answer, config.domains, config.language || 'zh');
+  const raw = await chat(config, providerName, OpenAIClient, prompt, { json: true });
+  let fm = {};
+  try { fm = JSON.parse((raw || '').replace(/```json|```/g, '').trim()); } catch { /* leave empty; repair fills gaps */ }
+
+  const cited = [...new Set([...String(answer).matchAll(/\[\[([^\]]+)\]\]/g)].map(m => m[1].trim()))];
+  const connections = cited.map(n => `related:: [[${n}]]`).join('\n');
+
+  const body = [
+    `## Question\n${question}`,
+    `## Answer\n${answer}`,
+    `## Connections${connections ? '\n' + connections : ''}`,
+    '## Open Questions',
+    '## Human Insight'
+  ].join('\n\n') + '\n';
+
+  const note = renderNote({ ...fm, type: 'synthesis', source: fm.source || '' }, body);
+  return repairNote(config, { note, providerName }, OpenAIClient);
 }
 
 // Interactive ask: revise/extend the free-form answer per a follow-up. Schema
