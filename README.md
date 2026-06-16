@@ -191,51 +191,104 @@ wiki rewrite rough-notes.md --type literature
 
 ### Personas & focus-area structures
 
-`templates/personas/<name>.md` and `templates/structures/<name>.md` are reusable,
-user-maintained text blocks you can select per-invocation on `ask` and `ingest`:
+Templates are reusable text blocks that shape how the LLM answers — without touching the note schema. Two orthogonal layers let you mix and match freely:
+
+- **A persona** (`-p`/`--persona <name>`) sets the *thinking mode* — the lens through which the LLM reasons. `inversion` asks what would cause failure before suggesting a path; `research-reviewer` scrutinizes methodology and baselines; `feynman-explainer` teaches by building intuition before definition.
+- **A structure** (`-s`/`--structure <name>`) sets the *coverage checklist* — the aspects the answer should address where relevant. `five-forces` ensures competitive analysis covers all five dimensions; `technology-deepdive` prevents the LLM from skipping performance benchmarks or ecosystem context.
+
+Both inject into the **system prompt of pass 1 only**, as `PERSONA:` and `FOCUS AREAS:` blocks. They shape the free-form answer; pass 2 (the formatting call) is never touched. A richer pass-1 answer simply gives pass 2 more to work with when it fills `## Source Facts`. Omitting either flag is a byte-for-byte no-op, and naming a template that doesn't resolve to a file is an error before any LLM call.
 
 ```powershell
-wiki ask "What is attention?" -p beginner
-wiki ingest paper.pdf -s system-design
+wiki ask "What is attention?" -p feynman-explainer
+wiki ask "Should we enter this market?" -p investor-decisionmaker -s five-forces
+wiki ingest paper.pdf -p research-reviewer -s ml-paper-notes
 ```
 
-- **A persona** (`-p`/`--persona <name>`) shapes the *voice/framing* of the pass-1 answer
-  or source summary — e.g. "explain like I'm new to this" or "critical, skeptical reviewer."
-- **A structure** (`-s`/`--structure <name>`) is a checklist of aspects the pass-1 output
-  should cover where relevant — e.g. "always note performance numbers, limitations, and
-  alternatives considered" — so the LLM doesn't neglect things you habitually care about.
+#### Available personas
 
-Both apply to **pass 1 only**: they shape the free-form answer or source summary, never the
-note schema itself — a richer pass-1 output simply gives pass 2 more to work with when it
-fills `## Source Facts`. Omitting both flags is a byte-for-byte no-op, and naming a
-template that doesn't resolve to a file is an error before any LLM call.
+| Name | Thinking mode |
+| ---- | ------------- |
+| `feynman-explainer` | Build intuition first: explain *why* something exists before *how* it works; use analogies; go shallow → deep |
+| `first-principles` | Strip all assumptions; rebuild conclusions from unquestionable basics |
+| `occams-razor` | Prefer the simplest sufficient explanation; surface and question unnecessary assumptions |
+| `socratic` | Probe definitions, expose unstated premises and logical contradictions |
+| `five-whys` | Diagnose root cause by layered "why" questioning (3–5 layers) |
+| `analogical` | Generate ideas by finding structural parallels across domains |
+| `second-order` | Quick chain-reaction analysis: "then what?" × 2–3 levels |
+| `systems-thinking` | Full feedback-loop modeling: stocks/flows, leverage points, policy resistance |
+| `inversion` | Planning phase: design by ruling out what must never happen |
+| `red-team` | Critique phase: construct the strongest attack on an existing conclusion |
+| `expected-value` | Quantify decisions as probability × outcome; flag non-linear and catastrophic risks |
+| `opportunity-cost` | Evaluate any choice against its next-best alternative; call out sunk-cost reasoning |
+| `research-reviewer` | Scrutinize academic/ML papers: methodology, baselines, ablations, reproducibility |
+| `skeptical-reviewer` | Scrutinize any argument: evidence quality, fact vs. inference, conflict of interest |
+| `investor-decisionmaker` | Reframe analysis as actionable risk/reward with clear time horizons |
 
-#### Seeded defaults
+#### Available structures
 
-`wiki init` seeds both directories with a starter set on first run — idempotent, so your
-own files are never overwritten or renamed. These are curated from real personal-vault
-usage, not placeholders:
+| Name | Coverage checklist |
+| ---- | ------------------ |
+| `concept-deep-dive` | Intuition & motivation → formal definition → derivation & examples → prior-concept relationships → common misconceptions → extensions |
+| `technology-deepdive` | Principles → architecture → performance & benchmarks → maturity & adoption → alternatives → limitations → ecosystem → roadmap |
+| `reading-notes` | Core argument, methodology, key findings & evidence, relationship to prior work, limitations, practical implications, open questions |
+| `ml-paper-notes` | Core idea & positioning, architecture details, experiment setup, key results & ablations, limitations & open problems, impact on existing notes |
+| `industry-research-report` | Executive summary → PEST → market size (TAM/SAM/SOM) → value chain → competitive structure → business models → user needs → trends → risks → opportunities → conclusions |
+| `company-competitor-deepdive` | Overview → business model → product & technology → market position → financials → team & governance → SWOT → risks → recent developments |
+| `swot` | Strengths / Weaknesses / Opportunities / Threats + cross-strategy (SO/WO/ST/WT) |
+| `five-forces` | Existing rivalry, new entrants, substitutes, supplier bargaining power, buyer bargaining power |
+| `pest` | Political / Economic / Social / Technology / Environment / Legal |
+| `value-chain` | Primary activities (inbound → ops → outbound → marketing → service) → support activities → margin analysis |
+| `3c` | Company / Customer / Competitor — strategic intersection and positioning |
+| `business-model-canvas` | Customer segments & value proposition / channels & relationships / revenue streams / key resources, activities & partners / cost structure |
+| `jtbd` | Core job, context & triggers, current alternatives, success criteria, adoption blockers |
+| `aarrr` | Acquisition / Activation / Retention / Revenue / Referral — with CAC, LTV, viral loop |
+| `mece` | Mutually exclusive, collectively exhaustive decomposition into a logical tree |
+| `iteration-loop` | PDCA (Plan→Do→Check→Act) for quality improvement; OODA (Observe→Orient→Decide→Act) for fast-response cycles |
 
-| Persona                      | Framing                                                                                   |
-| ----------------------------- | ------------------------------------------------------------------------------------------ |
-| `skeptical-reviewer`          | 挑剔的审稿人：追问证据，区分"已证实事实/推论/猜测"，主动指出局限与利益冲突。                  |
-| `beginner-explainer`          | 新手友好：先给一句话定位，术语首次出现即解释，多用类比，由浅入深。                          |
-| `investor-decisionmaker`      | 投资/决策者视角：每段落落到机会、风险与可执行的下一步，标注短期 vs 中长期。                  |
-| `systems-architect`           | Pragmatic principal architect: operational constraints, scaling bottlenecks, failure modes, security boundaries. |
-| `feynman-tutor`                | Feynman technique: plain language, intuitive analogies, "why" before "how."                |
+#### Pairing guide
 
-| Structure                        | Focus areas                                                                            |
-| ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `api-eval`                         | DX, performance, ecosystem fit, alternatives — for evaluating a library or API.            |
-| `system-design`                    | Bottlenecks, state & storage, failover, CAP/cost/complexity trade-offs.                    |
-| `paper-summary`                    | Core hypothesis, methodology, key benchmarks, limitations.                                 |
-| `paper-book-summary`               | 基本信息、核心论点、研究方法、关键发现、与既有知识的关系、局限性、实践启示、延伸问题。      |
-| `technology-deepdive`              | 技术原理、架构、性能与基准、成熟度与应用现状、替代方案、局限与开放问题。                    |
-| `company-competitor-deepdive`      | 公司概况、商业模式、产品技术、竞争格局、财务、团队治理、SWOT、风险、近期动态与展望。        |
-| `industry-research-report`         | 麦肯锡/贝恩式行业研究报告骨架：执行摘要、PEST、市场规模、产业链、竞争格局、趋势、风险、结论。 |
+Personas and structures are independent layers — most combinations work. A few to be aware of:
 
-Edit these files freely, or add your own `<name>.md` — they're yours the moment `init`
-writes them.
+**Avoid** — creates redundancy when used together:
+
+| Persona | Structure | Why |
+| ------- | --------- | --- |
+| `red-team` or `inversion` | `swot` | SWOT's Threats/Weaknesses already output failure modes |
+| `research-reviewer` | `ml-paper-notes` | The structure already covers ablations and limitations |
+| `skeptical-reviewer` | `reading-notes` | The structure has a built-in critical assessment section |
+| `investor-decisionmaker` | `industry-research-report` | The report's conclusion already includes the investor angle |
+
+**Recommended** — complementary layers:
+
+| Persona | Structure | Effect |
+| ------- | --------- | ------ |
+| `investor-decisionmaker` | `five-forces` / `3c` / `swot` | Persona frames the decision; structure provides the analytical scaffolding |
+| `first-principles` | `mece` | First-principles deconstructs; MECE ensures the breakdown is exhaustive |
+| `expected-value` | `industry-research-report` | Quantifies the report's qualitative risk/opportunity sections |
+| `second-order` or `systems-thinking` | `value-chain` | Traces indirect effects through each activity link in the chain |
+
+**Emergent** — output neither achieves alone:
+
+| Combo | What you get |
+| ----- | ------------ |
+| `red-team` + `business-model-canvas` | Attack on each canvas cell — reveals which assumptions competitors could exploit |
+| `inversion` + `jtbd` | "What would make users NOT hire this solution?" — surfaces blockers the positive framing misses |
+| `systems-thinking` + `industry-research-report` | Feedback loop dynamics layered onto what would otherwise be a static snapshot |
+
+Related personas to keep straight: `second-order` ↔ `systems-thinking` (same territory, different depth — use `second-order` for a quick "then what?" chain; use `systems-thinking` when feedback loops and leverage points matter); `inversion` ↔ `red-team` (planning phase vs. critique phase of the same conclusion).
+
+For the full pairing reference, see `templates/USAGE.md` (or `USAGE.zh.md`) in the vault.
+
+#### Customizing templates
+
+The bundled templates are examples — a starting point, not a fixed set. You can edit them, delete them, or add your own: drop any `<name>.md` into `templates/personas/` or `templates/structures/` and it's available immediately via `-p <name>` / `-s <name>`, with the same fuzzy name matching as the bundled ones. `wiki init` only seeds files that don't already exist, so your edits are never overwritten.
+
+When writing your own:
+
+- **Personas** should describe a thinking mode, not a topic — keep them to 4–6 bullet points so the LLM internalises the stance without being overwhelmed by instructions.
+- **Structures** should be a checklist of aspects to cover, not prose — the LLM writes the content; the structure just ensures nothing important gets skipped.
+
+For the full template reference and pairing guide, see `templates/USAGE.md` (or `USAGE.zh.md`) in the vault.
 
 #### Flexible name resolution
 

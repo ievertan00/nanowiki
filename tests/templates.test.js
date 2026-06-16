@@ -34,16 +34,16 @@ describe('templates', () => {
     });
 
     test('performs case-insensitive, prefix, or substring match', () => {
-      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'skeptical-reviewer.md'), 'Skeptical.');
-      assert.strictEqual(loadPersona(tempDir, 'Skeptical-Reviewer'), 'Skeptical.');
-      assert.strictEqual(loadPersona(tempDir, 'skeptical'), 'Skeptical.');
-      assert.strictEqual(loadPersona(tempDir, 'reviewer'), 'Skeptical.');
+      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'custom-tone.md'), 'Custom.');
+      assert.strictEqual(loadPersona(tempDir, 'Custom-Tone'), 'Custom.');
+      assert.strictEqual(loadPersona(tempDir, 'custom'), 'Custom.');
+      assert.strictEqual(loadPersona(tempDir, 'tone'), 'Custom.');
     });
 
     test('throws on ambiguous match', () => {
-      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'skeptical-reviewer.md'), 'Skeptical.');
-      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'systems-architect.md'), 'Systems.');
-      assert.throws(() => loadPersona(tempDir, 's'), /Ambiguous persona name "s": matches skeptical-reviewer, systems-architect/);
+      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'query-alpha.md'), 'Alpha.');
+      fs.writeFileSync(path.join(tempDir, 'templates', 'personas', 'query-beta.md'), 'Beta.');
+      assert.throws(() => loadPersona(tempDir, 'query'), /Ambiguous persona name "query": matches query-alpha, query-beta/);
     });
   });
 

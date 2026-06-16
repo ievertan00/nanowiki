@@ -27,35 +27,41 @@ describe('vault management', () => {
     const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'wiki-config.json'), 'utf8'));
     assert.deepStrictEqual(config, { language: 'en', domains: {} });
     assert.ok(fs.existsSync(path.join(tempDir, 'WIKI.md')));
+    assert.ok(fs.existsSync(path.join(tempDir, 'templates', 'USAGE.md')));
+    assert.ok(fs.existsSync(path.join(tempDir, 'templates', 'USAGE.zh.md')));
 
     for (const relPath of [
-      'templates/personas/skeptical-reviewer.md',
-      'templates/personas/systems-architect.md',
-      'templates/personas/feynman-tutor.md',
+      'templates/personas/feynman-explainer.md',
       'templates/personas/first-principles.md',
-      'templates/personas/inversion.md',
       'templates/personas/occams-razor.md',
-      'templates/personas/five-whys.md',
-      'templates/personas/opportunity-cost.md',
-      'templates/personas/second-order.md',
-      'templates/personas/expected-value.md',
       'templates/personas/socratic.md',
-      'templates/personas/red-team.md',
-      'templates/personas/systems-thinking.md',
+      'templates/personas/five-whys.md',
       'templates/personas/analogical.md',
-      'templates/structures/api-eval.md',
-      'templates/structures/system-design.md',
-      'templates/structures/paper-summary.md',
+      'templates/personas/second-order.md',
+      'templates/personas/systems-thinking.md',
+      'templates/personas/inversion.md',
+      'templates/personas/red-team.md',
+      'templates/personas/expected-value.md',
+      'templates/personas/opportunity-cost.md',
+      'templates/personas/research-reviewer.md',
+      'templates/personas/skeptical-reviewer.md',
+      'templates/personas/investor-decisionmaker.md',
+      'templates/structures/concept-deep-dive.md',
+      'templates/structures/ml-paper-notes.md',
+      'templates/structures/reading-notes.md',
+      'templates/structures/technology-deepdive.md',
+      'templates/structures/company-competitor-deepdive.md',
+      'templates/structures/industry-research-report.md',
       'templates/structures/swot.md',
       'templates/structures/five-forces.md',
       'templates/structures/pest.md',
       'templates/structures/business-model-canvas.md',
       'templates/structures/value-chain.md',
       'templates/structures/3c.md',
-      'templates/structures/mece.md',
-      'templates/structures/aarrr.md',
       'templates/structures/jtbd.md',
-      'templates/structures/iteration-loop.md'
+      'templates/structures/aarrr.md',
+      'templates/structures/mece.md',
+      'templates/structures/iteration-loop.md',
     ]) {
       assert.ok(fs.existsSync(path.join(tempDir, relPath)), `${relPath} should exist`);
     }
