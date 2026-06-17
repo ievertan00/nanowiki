@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { getLintPrompt, getDomainMergePrompt } from './prompts.js';
 import { getProvider } from './provider.js';
-import { appendToSection, saveNote, schemaName } from './note.js';
+import { appendToSection, saveNote, schemaName, sourceWikilink } from './note.js';
 import { parseFrontmatter } from './meta.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,6 +25,26 @@ function setNoteDomain(content, newDomain) {
   const m = frontmatterBlock(content);
   if (!m) return content;
   const newFm = m[2].replace(/^(domain:\s*).*$/m, `$1${newDomain}`);
+  return content.slice(0, m.index) + m[1] + newFm + m[3] + content.slice(m.index + m[0].length);
+}
+
+// Set the frontmatter `source:` field, replacing an existing (possibly empty)
+// line or inserting one after `type:` when absent. Same surgical rewrite as
+// setNoteDomain — fs.writeFileSync, not saveNote, so a metadata backfill never
+// bumps `updated:` or triggers a rename/dead-link pass.
+function setNoteSource(content, newSource) {
+  const m = frontmatterBlock(content);
+  if (!m) return content;
+  // Function replacers: newSource is a "[[...]]" wikilink, so a plain string
+  // replacement could misfire on a `$` sequence.
+  let newFm;
+  if (/^source:.*$/m.test(m[2])) {
+    newFm = m[2].replace(/^source:.*$/m, () => `source: ${newSource}`);
+  } else if (/^type:.*$/m.test(m[2])) {
+    newFm = m[2].replace(/^type:.*$/m, m0 => `${m0}\nsource: ${newSource}`);
+  } else {
+    newFm = `source: ${newSource}\n${m[2]}`;
+  }
   return content.slice(0, m.index) + m[1] + newFm + m[3] + content.slice(m.index + m[0].length);
 }
 
@@ -62,26 +82,104 @@ export function findOrphans(wikiPath) {
     .map(([slug]) => slug);
 }
 
-// Deterministic citation check (no LLM): every ^[name] marker in a note must
-// resolve to a file in sources/. Markers are stamped in code by ingest's fan-out
-// (see syncSourceMarkers); a broken one means the source file was renamed or
-// deleted after the fact it backs was written.
+// Deterministic citation check (no LLM): every ^[name] marker and every non-empty
+// frontmatter `source:` field in a note must resolve to a file in sources/. Inline
+// markers are stamped by syncSourceMarkers; the frontmatter field is set in code by
+// ask/query --save. A broken entry means the source file was renamed or deleted after
+// the fact it backs was written. Items with kind: 'frontmatter' are frontmatter-field
+// violations; items without kind are inline-marker violations.
 export function checkCitations(wikiPath) {
   const notesDir = path.join(wikiPath, 'notes');
   if (!fs.existsSync(notesDir)) return [];
   const sourcesDir = path.join(wikiPath, 'sources');
   const norm = s => s.toLowerCase().replace(/[^\w一-鿿]+/g, '');
-  const sources = new Set(fs.existsSync(sourcesDir)
-    ? fs.readdirSync(sourcesDir).map(f => norm(path.basename(f, path.extname(f))))
-    : []);
+  // Both forms resolve: the extensionless basename (^[marker] citations and .md
+  // wikilinks) and the full filename (non-md wikilinks like [[paper.pdf]]).
+  const sources = new Set();
+  if (fs.existsSync(sourcesDir)) {
+    for (const f of fs.readdirSync(sourcesDir)) {
+      sources.add(norm(path.basename(f, path.extname(f))));
+      sources.add(norm(f));
+    }
+  }
   const broken = [];
   for (const f of fs.readdirSync(notesDir).filter(f => f.endsWith('.md'))) {
     const content = fs.readFileSync(path.join(notesDir, f), 'utf8');
+    const note = path.basename(f, '.md');
     for (const m of content.matchAll(/\^\[([^\]]+)\]/g)) {
-      if (!sources.has(norm(m[1]))) broken.push({ note: path.basename(f, '.md'), marker: m[1] });
+      if (!sources.has(norm(m[1]))) broken.push({ note, marker: m[1] });
+    }
+    // Only a `source:` written as a wikilink is a vault-file reference that must
+    // resolve. Free-text values (book titles, URLs, "N/A", "") are citations, not
+    // links — leave them. backfillSources upgrades plain values that DO match a file.
+    const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    const sourceFm = fm?.[1].match(/^source:[^\S\r\n]*(\S[^\r\n]*)/m)?.[1]?.trim();
+    const link = sourceFm?.replace(/^["']|["']$/g, '').match(/^\[\[([^\]]+)\]\]$/);
+    if (link && !sources.has(norm(link[1]))) {
+      broken.push({ note, marker: link[1], kind: 'frontmatter' });
     }
   }
   return broken;
+}
+
+// Deterministic source normalization (no LLM): make every note's `source:` field a
+// clickable wikilink to its file in sources/. Three cases per note:
+//   - empty/missing source → match the note's title against the source filenames
+//     and fill in the wikilink (notes that predate ask/query source-stamping);
+//   - a plain or differently-cased value that resolves to a real source file →
+//     rewrite it to the canonical wikilink form (with extension for non-md files);
+//   - already in canonical wikilink form → left untouched (idempotent).
+// A non-empty value that resolves to no file (literature citation strings like a
+// book title) is left alone — never wrapped into a dead link. An empty source with
+// no title match is reported as unmatched, never guessed at. Same norm as checkCitations.
+export function backfillSources(wikiPath) {
+  const notesDir = path.join(wikiPath, 'notes');
+  if (!fs.existsSync(notesDir)) return { filled: [], unmatched: [] };
+  const sourcesDir = path.join(wikiPath, 'sources');
+  const norm = s => s.toLowerCase().replace(/[^\w一-鿿]+/g, '');
+
+  // Both the extensionless basename and the full filename map to the real filename,
+  // so a source value resolves whether or not it carries the extension. The link
+  // target (with/without extension) is then decided by sourceWikilink.
+  const sources = new Map();
+  if (fs.existsSync(sourcesDir)) {
+    for (const f of fs.readdirSync(sourcesDir)) {
+      sources.set(norm(path.basename(f, path.extname(f))), f);
+      sources.set(norm(f), f);
+    }
+  }
+
+  const filled = [];
+  const unmatched = [];
+  for (const f of fs.readdirSync(notesDir).filter(f => f.endsWith('.md'))) {
+    const p = path.join(notesDir, f);
+    const content = fs.readFileSync(p, 'utf8');
+    const fm = frontmatterBlock(content);
+    if (!fm) continue;
+    const rawLine = fm[2].match(/^source:[^\S\r\n]*(\S[^\r\n]*)/m)?.[1]?.trim();
+    // The bare reference, stripped of wrapping quotes and [[ ]], if any.
+    const bare = rawLine ? rawLine.replace(/^["']|["']$/g, '').replace(/^\[\[|\]\]$/g, '').trim() : '';
+
+    // The matched source filename: from the title when source is empty, else from the value.
+    let file;
+    if (!bare) {
+      const title = fm[2].match(/^title:[^\S\r\n]*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '');
+      file = title && sources.get(norm(title));
+    } else {
+      file = sources.get(norm(bare));
+    }
+
+    if (!file) {
+      if (!bare) unmatched.push(path.basename(f, '.md')); // empty + no match
+      continue; // a non-resolving value is a citation, not a file link — leave it
+    }
+
+    const desired = sourceWikilink(file);
+    if (rawLine === desired) continue; // already canonical link form — idempotent
+    fs.writeFileSync(p, setNoteSource(content, desired));
+    filled.push({ note: path.basename(f, '.md'), source: file });
+  }
+  return { filled, unmatched };
 }
 
 export async function consolidateDomains(config, { providerName = 'default' }, OpenAIClient = OpenAI) {

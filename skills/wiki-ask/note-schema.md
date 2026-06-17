@@ -53,7 +53,9 @@ title: <specific, unique noun phrase — Title Case, 3–7 words; distinctive en
   stand alone in an index. Avoid generic one-word labels ("Gemini", "Attention").
   Name the precise concept ("Scaled Dot-Product Attention"). For zh the value may be Chinese.>
 type: <atomic | literature>
-source: <empty for atomic notes; the source filename/title for literature notes>
+source: <a quoted wikilink to this note's source file in sources/, e.g. "[[My-Answer]]";
+  KEEP the extension for non-markdown files so Obsidian can resolve them — "[[paper.pdf]]",
+  NOT "[[paper]]" (which would resolve to paper.md). Empty when the note has no source file.>
 domain: <closest match from the taxonomy, or a new concise domain>
 topic: <closest match from the taxonomy, or a new concise topic>
 tags: [tag-a, tag-b, tag-c]   # 3–6 tags, each a SINGLE token with NO spaces,

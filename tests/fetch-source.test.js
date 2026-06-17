@@ -26,14 +26,20 @@ test('parseReaderResponse extracts title and markdown body', () => {
 });
 
 test('fetchUrlSource tags YouTube as a transcript', async () => {
-  const fakeFetch = async () => ({ ok: true, text: async () => 'Title: V\n\nMarkdown Content:\nhi' });
+  const body = 'transcript line. '.repeat(20); // > MIN_READABLE_CHARS
+  const fakeFetch = async () => ({ ok: true, text: async () => `Title: V\n\nMarkdown Content:\n${body}` });
   const r = await fetchUrlSource('https://youtu.be/x', fakeFetch);
   assert.equal(r.sourceType, 'video-transcript');
   assert.equal(r.title, 'V');
-  assert.equal(r.content, 'hi');
+  assert.equal(r.content, body.trim());
 });
 
 test('fetchUrlSource surfaces HTTP errors', async () => {
   const fakeFetch = async () => ({ ok: false, status: 403 });
   await assert.rejects(fetchUrlSource('https://e.com', fakeFetch), /403/);
+});
+
+test('fetchUrlSource rejects thin SPA/paywall content', async () => {
+  const fakeFetch = async () => ({ ok: true, text: async () => 'Title: App\n\nMarkdown Content:\nLoading...' });
+  await assert.rejects(fetchUrlSource('https://spa.example/app', fakeFetch), /too little readable content/);
 });

@@ -58,6 +58,9 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
    - In `## Connections`, link **only** to notes from the existing-notes list. If none
      apply, leave it empty.
    - Add no information beyond what is in the pass-1 answer.
+   - Set `source: "[[<slug>]]"` (the note slug from step 5) — a quoted wikilink to the
+     pass-1 answer that step 6 saves at `sources/<slug>.md`, so the note's source is a
+     clickable link. No extension: the source is a `.md` file.
    - End every `## Source Facts` bullet with the citation marker ` ^[<slug>]`, where
      `<slug>` is the note slug from step 5: the pass-1 answer is the source of this
      note, and step 6 saves it at `sources/<slug>.md` — the file those markers resolve

@@ -9,8 +9,8 @@ import { initVault, appendLog } from '../src/vault.js';
 import { buildCatalog, selectCandidates } from '../src/retrieve.js';
 import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki, synthesize } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
-import { lintWiki, consolidateDomains, applyLintOps, checkCitations, renameToSchema } from '../src/lint.js';
-import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight } from '../src/note.js';
+import { lintWiki, consolidateDomains, applyLintOps, checkCitations, renameToSchema, backfillSources } from '../src/lint.js';
+import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight, sourceWikilink } from '../src/note.js';
 import { loadPersona, loadStructure } from '../src/templates.js';
 import { syncSourceMarkers } from '../src/validator.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
@@ -164,7 +164,11 @@ program
 
     // Citation markers are code's job (see syncSourceMarkers): every Source
     // Facts bullet of a fresh ask note is backed by the pass-1 answer above.
-    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: syncSourceMarkers('', note, sourceSlug) });
+    // source: in the frontmatter is set in code (same as query --save) so the
+    // link from the note to its pass-1 source file is always present — written as a
+    // quoted wikilink so Obsidian renders it as a clickable link to sources/.
+    const linkedNote = note.replace(/^source:.*$/m, () => `source: ${sourceWikilink(path.basename(sourcePath))}`);
+    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: syncSourceMarkers('', linkedNote, sourceSlug) });
     if (renamed) warnCollision(savedPath, noteTitle);
     saveTaxonomy(config.wikiPath, config, domain, topic);
     appendLog(config.wikiPath, 'ask', noteTitle);
@@ -214,10 +218,9 @@ program
     // `ask` — it is what the note is derived from, so nothing is lost if a later
     // edit reshapes the note.
     const sourcePath = saveSource(config.wikiPath, { title: question.slice(0, 60), question, content: answer });
-    const sourceSlug = path.basename(sourcePath, '.md');
 
     let note = await synthesize(config, { question, answer, providerName: options.provider });
-    note = note.replace(/^source:.*$/m, `source: ${sourceSlug}`);
+    note = note.replace(/^source:.*$/m, () => `source: ${sourceWikilink(path.basename(sourcePath))}`);
 
     const { domain, topic, title } = extractFrontmatter(note);
     const noteTitle = title || question.slice(0, 60);
@@ -261,7 +264,33 @@ program
       forcedType: cmdOptions.type || null
     });
 
-    const content = restoreHumanInsight(note, humanInsight);
+    let content = restoreHumanInsight(note, humanInsight);
+
+    // Link the note to its source in code (never trusted to the LLM), same as
+    // ask/ingest. Two cases:
+    //  - The input is an existing note (lives in notes/) being re-normalized: it is
+    //    not its own source, so keep whatever source: it already declared verbatim.
+    //  - The input is a source document: pin a copy in sources/ if it isn't already
+    //    there, then point source: at that file (keeping a non-md extension so
+    //    Obsidian can resolve it — [[name.pdf]], not [[name]]).
+    const notesDir = path.join(config.wikiPath, 'notes');
+    const sourcesDir = path.join(config.wikiPath, 'sources');
+    const fileDir = path.resolve(path.dirname(file)).toLowerCase();
+    if (fileDir === path.resolve(notesDir).toLowerCase()) {
+      const existingSource = rawContent.match(/^source:.*$/m)?.[0];
+      if (existingSource) content = content.replace(/^source:.*$/m, () => existingSource);
+    } else {
+      let sourceFile;
+      if (fileDir === path.resolve(sourcesDir).toLowerCase()) {
+        sourceFile = path.basename(file);
+      } else {
+        const ext = path.extname(file);
+        sourceFile = path.basename(file, ext).replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + ext;
+        fs.copyFileSync(file, path.join(sourcesDir, sourceFile));
+        console.log(chalk.green(`Source copied: ${path.join(sourcesDir, sourceFile)}`));
+      }
+      content = content.replace(/^source:.*$/m, () => `source: ${sourceWikilink(sourceFile)}`);
+    }
 
     const { domain, topic, title } = extractFrontmatter(content);
     const noteTitle = title || path.basename(file, '.md');
@@ -359,10 +388,14 @@ program
       structureText
     });
 
-    // Save literature note
-    const { domain, topic, title } = extractFrontmatter(literatureNote);
+    // Save literature note. source: is stamped in code (not trusted to the LLM) as a
+    // wikilink to the actual file in sources/ — sourceFile keeps its extension, so a
+    // non-md source (e.g. a .pdf) links as [[name.pdf]], which Obsidian can resolve;
+    // [[name]] would only ever resolve to name.md.
+    const literatureWithSource = literatureNote.replace(/^source:.*$/m, () => `source: ${sourceWikilink(sourceFile)}`);
+    const { domain, topic, title } = extractFrontmatter(literatureWithSource);
     const noteTitle = title || sourceTitle;
-    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: literatureNote });
+    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: literatureWithSource });
     if (renamed) warnCollision(savedPath, noteTitle);
     saveTaxonomy(config.wikiPath, config, domain, topic);
     console.log(chalk.green(`Literature note: ${savedPath}`));
@@ -494,18 +527,29 @@ program
     updateIndex(config.wikiPath);
     updateWikiDomains(config.wikiPath);
 
+    // Deterministic, code-only: backfill the frontmatter source: field on notes that
+    // predate the ask/query source-stamping fix, by matching their title to a file in
+    // sources/. Runs before checkCitations so the report reflects the filled state.
+    const { filled, unmatched } = backfillSources(config.wikiPath);
+    let backfillSection = '';
+    if (filled.length) backfillSection += `## Source Backfill\n\n${filled.map(b => `- [[${b.note}]] → \`source: ${b.source}\``).join('\n')}\n\n`;
+    if (unmatched.length) backfillSection += `## Missing Source (no file in sources/ matches the title)\n\n${unmatched.map(s => `- [[${s}]]`).join('\n')}\n\n`;
+
     // Deterministic checks (no LLM): citation markers that no longer resolve to a
     // file in sources/, and ingested sources whose file changed since ingestion.
     let staticChecks = '';
     const broken = checkCitations(config.wikiPath);
     if (broken.length) {
-      staticChecks += `## Broken Source Citations\n\n${broken.map(b => `- [[${b.note}]] cites \`^[${b.marker}]\` — no matching file in sources/`).join('\n')}\n\n`;
+      staticChecks += `## Broken Source Citations\n\n${broken.map(b => b.kind === 'frontmatter'
+        ? `- [[${b.note}]] has \`source: ${b.marker}\` — no matching file in sources/`
+        : `- [[${b.note}]] cites \`^[${b.marker}]\` — no matching file in sources/`
+      ).join('\n')}\n\n`;
     }
     const staleSection = renderStaleSources(findStaleSources(config.wikiPath));
     if (staleSection) staticChecks += `${staleSection}\n`;
 
     const { report: lintReport, ops } = await lintWiki(config, { providerName: options.provider });
-    let report = `${staticChecks}${schemaSection}${consolidation}\n${lintReport}`;
+    let report = `${backfillSection}${staticChecks}${schemaSection}${consolidation}\n${lintReport}`;
 
     const date = new Date().toISOString().slice(0, 10);
     if (cmdOptions.fix && ops.length) {
@@ -521,6 +565,7 @@ program
     fs.writeFileSync(reportPath, report);
 
     appendLog(config.wikiPath, 'lint', date, [
+      ...filled.map(b => `source-filled: ${b.note} -> ${b.source}`),
       ...renamed.map(r => `renamed: ${r.from} -> ${r.to}`),
       ...flagged.map(s => `off-schema: ${s}`)
     ]);

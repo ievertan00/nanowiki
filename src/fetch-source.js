@@ -8,6 +8,11 @@
 
 const READER = 'https://r.jina.ai/';
 
+// Below this many characters, a "successful" fetch is almost certainly a
+// JS-rendered SPA shell, a login/paywall page, or an empty stub rather than
+// real readable content — reject it loudly instead of ingesting garbage.
+const MIN_READABLE_CHARS = 200;
+
 export function isUrl(arg) {
   return /^https?:\/\//i.test((arg || '').trim());
 }
@@ -44,6 +49,8 @@ async function readViaJina(url, fetchImpl) {
 export async function fetchUrlSource(url, fetchImpl = fetch) {
   const kind = adapterFor(url);
   const { title, content } = await readViaJina(url, fetchImpl);
-  if (!content) throw new Error(`Reader returned no content for ${url}.`);
+  if (content.trim().length < MIN_READABLE_CHARS) {
+    throw new Error(`Reader returned too little readable content for ${url} (${content.trim().length} chars) — likely a JS-rendered page, a login/paywall, or an empty source. Save the content to a local file and ingest that file instead.`);
+  }
   return { title, content, url, sourceType: kind === 'youtube' ? 'video-transcript' : 'web' };
 }

@@ -35,6 +35,17 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 
    Error if nothing resolves.
 
+   **Decide the source link** from where the input lives:
+   - If the input file is **already inside `<vault>\notes\`** (you are re-normalizing an
+     existing note), it is *not* its own source — note its current `source:` value (if
+     any) to carry over unchanged in step 4. Set `sourceFile` = none.
+   - **Otherwise the input is a source document.** A note can only link to a source that
+     lives in `sources/`. If the file is **not** already inside `<vault>\sources\`, copy
+     it there now — slugify its basename (same slug rule) and keep the original
+     extension: `Copy-Item "<resolved path>" "<vault>\sources\<slug><ext>"`. Set
+     `sourceFile` = the basename **with** extension of the file in `sources/`
+     (e.g. `paper.pdf`, `My-Notes.md`).
+
 2. **Read** the input file. If it contains a `## Human Insight` section with a non-empty
    body, capture that body now — you will restore it verbatim at the end.
 
@@ -46,6 +57,11 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
    - `type`: use `--type` if given, else infer `atomic` or `literature` from the content.
    - In `## Connections`, link **only** to existing notes; otherwise leave empty.
    - Do not add information beyond what the file contains.
+   - **Set `source:`** from step 1: if `sourceFile` was set (input was a source
+     document), use a quoted wikilink to it — **keep the extension for non-markdown
+     files** so Obsidian can resolve them, drop only a `.md` extension:
+     `source: "[[paper.pdf]]"`, `source: "[[My-Notes]]"`. If you were re-normalizing an
+     existing note, carry over its current `source:` value unchanged (empty if it had none).
 
 5. **Restore Human Insight.** Replace the `## Human Insight` section of your output with
    the body you captured in step 2 (verbatim). If there was none, leave it empty.

@@ -106,6 +106,18 @@ export function schemaName({ domain, topic, title }) {
   return `${domain}-${topic}-${title}`.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '');
 }
 
+// The Obsidian-navigable form of a reference to a file in sources/: a quoted
+// wikilink, so the `source:` frontmatter property renders as a clickable link.
+// Markdown sources link extensionless (Obsidian resolves [[name]] to name.md);
+// non-md sources (PDF, txt, images, …) MUST carry the extension — [[paper]] would
+// resolve to paper.md, never paper.pdf. Quotes because bare [[...]] is invalid YAML.
+// `filename` is the source's basename WITH its extension (e.g. "paper.pdf", "x.md").
+export function sourceWikilink(filename) {
+  const ext = path.extname(filename);
+  const target = ext.toLowerCase() === '.md' ? path.basename(filename, ext) : filename;
+  return `"[[${target}]]"`;
+}
+
 export function saveSource(wikiPath, { title, question, content }) {
   const filename = title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + '.md';
   const fullPath = path.join(wikiPath, 'sources', filename);

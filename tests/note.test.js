@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { saveNote, schemaName, extractHumanInsight, restoreHumanInsight, appendToSection } from '../src/note.js';
+import { saveNote, schemaName, extractHumanInsight, restoreHumanInsight, appendToSection, sourceWikilink } from '../src/note.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -135,6 +135,21 @@ describe('schemaName', () => {
   test('returns null when domain or topic is missing', () => {
     assert.strictEqual(schemaName({ domain: 'AI', title: 'x' }), null);
     assert.strictEqual(schemaName({ topic: 'y', title: 'x' }), null);
+  });
+});
+
+describe('sourceWikilink', () => {
+  test('links a markdown source without its extension', () => {
+    assert.strictEqual(sourceWikilink('My-Answer.md'), '"[[My-Answer]]"');
+  });
+
+  test('keeps the extension for non-md sources (pdf, txt) so Obsidian resolves them', () => {
+    assert.strictEqual(sourceWikilink('Attention-Is-All-You-Need.pdf'), '"[[Attention-Is-All-You-Need.pdf]]"');
+    assert.strictEqual(sourceWikilink('notes.txt'), '"[[notes.txt]]"');
+  });
+
+  test('extension match is case-insensitive', () => {
+    assert.strictEqual(sourceWikilink('Doc.MD'), '"[[Doc]]"');
   });
 });
 

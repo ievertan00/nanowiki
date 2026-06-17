@@ -5,7 +5,12 @@
 <h1 align="center">Nanowiki</h1>
 
 <p align="center">
-  <b>A lightweight, versatile personal wiki that functions both as a standalone CLI and as a native skill for AI coding agents such as Claude and Gemini.</b>
+  <b>Your questions become a self-organizing knowledge graph.<br>The LLM writes every note; you own every file.</b>
+</p>
+
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg" alt="Node >= 18"></a>
 </p>
 
 ---
@@ -22,17 +27,91 @@ We talk to LLMs every day, but those conversations are scattered — across brow
 - **The LLM is the programmer.** It writes every note, draws every link, and keeps the indexes fresh.
 - **The wiki is the codebase.** Plain Markdown files — local, readable, greppable, and yours forever.
 
+---
+
+## Quick Start
+
+**Option A — CLI** (any LLM API key, any platform):
+
+```powershell
+git clone https://github.com/ievertan00/nanowiki.git
+cd nanowiki
+npm install
+npm link                  # exposes `wiki` globally
+
+copy .env.example .env    # set WIKI_PATH + GEMINI_API_KEY (or DeepSeek/Qwen/Ollama)
+wiki init                 # bootstrap the vault
+wiki ask "What is the attention mechanism?"
+```
+
+**Option B — Agent skill** (no API key — the agent is the LLM):
+
+```
+npx skills add ievertan00/nanowiki
+```
+
+Then in Claude Code or Gemini CLI:
+
+```
+/wiki-ask "What is the attention mechanism?"
+```
+
+That's it. Point Obsidian at `WIKI_PATH` and your knowledge graph is already there.
+
+---
+
+## Two Front Ends, One Vault
+
+| | CLI (`wiki <cmd>`) | Skill (`/wiki-<cmd>`) |
+|---|---|---|
+| **LLM** | Any OpenAI-compatible API | The host agent (Claude, Gemini, …) |
+| **API key** | Required | None — uses the agent's own model |
+| **Image/scanned PDF** | Not supported | Agent reads and transcribes visually |
+| **Install** | `npm link` | `npx skills add ievertan00/nanowiki` |
+
+Both front ends write to the same vault. You can mix and match freely.
+
+---
+
+## Core Operations
+
+| Operation | What it does |
+| --- | --- |
+| `ask "<question>"` | Answer a question, then format the answer into a new linked note. Interactive refine loop before saving. |
+| `query "<question>"` | Answer from your existing notes only, with `[[note]]` citations. Read-only. |
+| `ingest <file\|url>` | Write a literature note for a source, then fan out targeted additions to related notes. |
+| `rewrite <file>` | Reformat a draft or rough file into the note schema (Human Insight preserved). |
+| `update <note> "<info>"` | Integrate new information into one existing note in place. |
+| `lint` | Health-check the vault: consolidate domains, surface contradictions, orphans, thin notes. |
+| `questions` | Harvest every `## Open Questions` + dead-link wishlist into a worklist for your next `ask`. |
+
+Five of these are also available as agent slash commands (`/wiki-ask`, `/wiki-query`, `/wiki-ingest`, `/wiki-rewrite`, `/wiki-lint`).
+
+---
+
+## What You Never Have to Do
+
+You never name files, create folders, update an index, or draw links manually. After every mutating command, the CLI regenerates:
+
+- `moc/<domain>.md` — notes grouped by topic, derived from frontmatter
+- `meta/index.md` — full note catalog
+- `meta/log.md` — append-only operation log
+
+The taxonomy (domains and topics) grows as the LLM coins new ones, written back to `wiki-config.json`. Dead links are stripped before saving and queued in `meta/wanted-notes.md` — a wishlist `wiki questions` folds into your next session.
+
+---
+
 ## Architecture
 
 The vault is built from five layers, each with a clear owner:
 
-| Layer      | Owner       | What it holds                                                                   |
-| ---------- | ----------- | ------------------------------------------------------------------------------- |
-| `sources/` | **You**     | Raw inputs — articles, papers, transcripts, drafts. Immutable.                  |
-| `notes/`   | **The LLM** | All wiki pages, flat. Organization is frontmatter + `[[links]]`, never folders. |
-| `moc/`     | **The CLI** | Per-domain Maps of Content, auto-regenerated after every change.                |
-| `meta/`    | **The CLI** | The full note index, lint reports, dead-link/question worklists, and an append-only operation log. |
-| `templates/` | **You**   | Persona/focus-area text blocks for `ask`/`ingest` (`-p`/`--persona`, `-s`/`--structure`), seeded with defaults on `init`. |
+| Layer | Owner | What it holds |
+| --- | --- | --- |
+| `sources/` | **You** | Raw inputs — articles, papers, transcripts, drafts. Immutable. |
+| `notes/` | **The LLM** | All wiki pages, flat. Organization is frontmatter + `[[links]]`, never folders. |
+| `moc/` | **The CLI** | Per-domain Maps of Content, auto-regenerated after every change. |
+| `meta/` | **The CLI** | The full note index, lint reports, dead-link/question worklists, and an append-only operation log. |
+| `templates/` | **You** | Persona/focus-area text blocks for `ask`/`ingest` (`-p`/`--persona`, `-s`/`--structure`), seeded with defaults on `init`. |
 
 ### Vault Structure
 
@@ -95,26 +174,6 @@ Two invariants are enforced **in code**, independent of the LLM:
 
 ## Workflows
 
-There are five core operations, available in both front ends (CLI: `wiki <cmd>`, skill: `/wiki-<cmd>`):
-
-| Operation            | What it does                                                                           |
-| -------------------- | -------------------------------------------------------------------------------------- |
-| `ask "<question>"`   | Answer a question well, then format the answer into a new note.                        |
-| `query "<question>"` | Answer from the existing notes only, with `[[note]]` citations. Read-only.             |
-| `ingest <file\|url>` | Write a literature note for a source, then fan out updates into existing notes.        |
-| `rewrite <file>`     | Reformat a draft or rough file into the note schema (Human Insight preserved).         |
-| `lint`               | Health-check the vault: consolidate domains, find contradictions, orphans, thin notes. |
-
-Three more commands round out the CLI but have no skill counterpart — they're either how
-the vault gets bootstrapped or pure-code maintenance that needs no LLM-as-generator front
-end:
-
-| Command                  | What it does                                                                                                        |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `init [path]`            | Bootstrap a vault: `sources/`, `notes/`, `moc/`, `meta/`, `templates/` (with seeded personas/structures), `wiki-config.json`, `WIKI.md`. The only command that runs **without** a configured `WIKI_PATH`. |
-| `update <note> "<info>"` | Deliberately evolve one existing note: the LLM integrates new information in place, Human Insight is preserved, and a deterministic check guarantees no existing `Source Facts` are lost. |
-| `questions`              | No LLM call — harvest every note's `## Open Questions` plus the `wanted-notes.md` dead-link wishlist into `meta/questions.md`, a worklist to feed back into `ask`. |
-
 ### The multi-round `ask` loop
 
 `ask` is two LLM passes wrapped around an interactive refine loop:
@@ -155,12 +214,12 @@ A single source may update many notes: the LLM extracts a summary plus targeted 
 
 **Supported source formats:**
 
-| Source       | CLI (`wiki ingest`)                                          | Skill (`/wiki-ingest`)                                              |
-| ------------ | ------------------------------------------------------------ | --------------------------------------------------------------------- |
-| Markdown/text | read directly                                                 | read directly                                                          |
-| PDF           | text extracted via `pdf-parse` (text-based PDFs only)        | read via the agent's Read tool (chunked by page range if >20 pages)   |
-| Image         | not supported                                                 | read visually and transcribed by the agent                            |
-| Web/YouTube URL | fetched to `sources/` via Jina Reader, then ingested       | fetched and reduced to Markdown by the agent's own fetch tool          |
+| Source | CLI (`wiki ingest`) | Skill (`/wiki-ingest`) |
+| --- | --- | --- |
+| Markdown/text | read directly | read directly |
+| PDF | text extracted via `pdf-parse` (text-based PDFs only) | read via the agent's Read tool (chunked by page range if >20 pages) |
+| Image | not supported | read visually and transcribed by the agent |
+| Web/YouTube URL | fetched to `sources/` via Jina Reader, then ingested | fetched and reduced to Markdown by the agent's own fetch tool |
 
 The skill front end is the LLM doing its own reading, so it covers scanned PDFs and standalone images the CLI's `pdf-parse` path cannot.
 
@@ -451,7 +510,7 @@ wiki ask "What is attention?" --provider deepseek --lang en
 wiki rewrite draft.md --type literature
 ```
 
-**3. Open the vault in Obsidian (recommended) ** — point Obsidian at `WIKI_PATH` and read.
+**3. Open the vault in Obsidian (recommended)** — point Obsidian at `WIKI_PATH` and read.
 
 The vault's `wiki-config.json` owns the live domain/topic taxonomy (the LLM grows it as it coins new domains) and can override language and provider settings per vault.
 

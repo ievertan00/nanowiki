@@ -35,6 +35,12 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      readable content only, dropping nav/ads/boilerplate. For a YouTube URL
      (`youtube.com`/`youtu.be`/`m.youtube.com`), capture the video **transcript** rather
      than the page chrome.
+   - **One fetch attempt only.** If the fetch returns readable article prose, use it. If
+     it returns no usable readable content — a JS-rendered SPA, a login/paywall, raw
+     serialized app state (React/JSON blobs), or near-empty text — **stop and report**
+     that the URL could not be reduced to readable text, and tell the user to save the
+     content to a local file and ingest that instead. Do **not** write scraper scripts,
+     re-parse, or re-read fetched dumps in a loop — there is no second extraction path.
    - Compute a slug from the page title (the same slug rule used for notes) and write the
      markdown to `<vault>\sources\<slug>.md` with this frontmatter, then a blank line, then
      the content:
@@ -46,8 +52,9 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      fetched: <YYYY-MM-DD>
      ---
      ```
-   - Set `sourceTitle` = the page title and use the fetched markdown as the source content.
-     Skip the file-resolution rules below and continue at step 2.
+   - Set `sourceTitle` = the page title, `sourceFile` = `<slug>.md` (the file you just
+     wrote), and use the fetched markdown as the source content. Skip the file-resolution
+     rules below and continue at step 2.
 
    **Otherwise** resolve it to a real file:
    - **Bare filename** — no `/` or `\` (e.g. `paper.md`) → `<vault>\sources\<name>`.
@@ -57,6 +64,12 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 
    Error if nothing resolves. Set `sourceTitle` = the resolved file's basename without
    extension.
+
+   **Pin the source inside the vault.** A note can only link to a source that lives in
+   `sources/`. If the resolved file is **not** already inside `<vault>\sources\`, copy it
+   there now — slugify its basename (same slug rule) and keep the original extension:
+   `Copy-Item "<resolved path>" "<vault>\sources\<slug><ext>"`. Set `sourceFile` = the
+   basename **with** extension of the file in `sources/` (e.g. `paper.pdf`, `My-Notes.md`).
 
 2. **Gather context.** List `notes/` basenames (existing-notes list) and read the
    `domains` taxonomy from `wiki-config.json`.
@@ -97,9 +110,12 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      **pass-1 only**: pass 2 below just reshapes whatever `summary` contains.
 
 4. **Pass 2 — Literature note.** Format `summary` into the note schema as a
-   **literature** note: `type: literature`, `source: <sourceTitle>`. Assign
-   `domain`/`topic` against the taxonomy. Link only to existing notes. Compute the slug
-   from the note title (fall back to `sourceTitle`) and write `notes/<slug>.md`.
+   **literature** note: `type: literature`. Set `source:` to a quoted wikilink to
+   `sourceFile` (the source in `sources/`) — **keep the extension for non-markdown files**
+   so Obsidian can resolve them, drop only a `.md` extension: `source: "[[paper.pdf]]"`
+   for a PDF, `source: "[[My-Notes]]"` for `My-Notes.md`. Assign `domain`/`topic` against
+   the taxonomy. Link only to existing notes. Compute the slug from the note title (fall
+   back to `sourceTitle`) and write `notes/<slug>.md`.
 
 5. **Apply updates.** For each `{ note, addition }`:
    - Compute the target path with the slug rule: `notes/<slug-of-note>.md`.
