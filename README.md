@@ -15,7 +15,7 @@
 
 ---
 
-![](D:\Projects\wiki\assets\大模型驱动个人知识库系统.png)
+![大模型驱动个人知识库系统](assets/architecture.png.png)
 
 ## Philosophy
 
