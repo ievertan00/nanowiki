@@ -151,4 +151,36 @@ describe('findStaleSources', () => {
     fs.rmSync(path.join(vault, 'meta', 'ingested.json'));
     assert.deepStrictEqual(findStaleSources(vault), []);
   });
+
+  // Binary sources (PDF/image) must be hashed as raw bytes: distinct binaries can
+  // decode to the same UTF-8 string (invalid bytes -> U+FFFD) and would otherwise
+  // be misclassified as fresh. 0xfe and 0xff both decode to '�'.
+  test('a binary source is hashed by bytes, not lossy UTF-8 decode', () => {
+    const original = Buffer.from([0x89, 0xfe, 0x00]);
+    const edited = Buffer.from([0x89, 0xff, 0x00]); // differs only where utf8 decode collapses
+    assert.equal(original.toString('utf8'), edited.toString('utf8')); // would collide as strings
+
+    fs.writeFileSync(path.join(vault, 'sources', 'scan.png'), edited);
+    writeLedger({ h1: { title: 'scan', date: '2026-01-01', file: 'scan.png', fileHash: hashSource(original), notes: ['n'] } });
+    assert.deepStrictEqual(findStaleSources(vault), [
+      { file: 'scan.png', status: 'stale', date: '2026-01-01', notes: ['n'] }
+    ]);
+
+    fs.writeFileSync(path.join(vault, 'sources', 'scan.png'), original); // exact bytes -> fresh
+    assert.deepStrictEqual(findStaleSources(vault), []);
+  });
+});
+
+describe('hashSource', () => {
+  test('distinguishes binary buffers that collide under UTF-8 decode', () => {
+    const a = Buffer.from([0xfe]);
+    const b = Buffer.from([0xff]);
+    assert.equal(a.toString('utf8'), b.toString('utf8'));     // same lossy string
+    assert.notEqual(hashSource(a), hashSource(b));            // distinct as bytes
+  });
+
+  test('a Buffer and the string of its valid-UTF-8 bytes hash the same (text back-compat)', () => {
+    const s = 'héllo 世界';
+    assert.equal(hashSource(Buffer.from(s, 'utf8')), hashSource(s));
+  });
 });

@@ -82,7 +82,11 @@ export function updateWikiDomains(wikiPath) {
 }
 
 // One hash rule for the whole pipeline: ingest's idempotency ledger keys and the
-// per-file staleness hashes must agree, so both live here.
+// per-file staleness hashes must agree, so both live here. Accepts a string
+// (extracted text, for ledger keys) or a Buffer (raw file bytes, for `fileHash`
+// and staleness checks) — binary sources (PDF/image) MUST hash raw bytes, since a
+// UTF-8 decode collapses invalid byte sequences to U+FFFD and can collide
+// distinct files. For valid UTF-8 text the two agree (crypto defaults to utf8).
 export function hashSource(content) {
   return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
 }
@@ -116,7 +120,7 @@ export function findStaleSources(wikiPath) {
       stale.push({ file, status: 'missing', date: latest.date, notes: latest.notes || [] });
       continue;
     }
-    const current = hashSource(fs.readFileSync(fullPath, 'utf8'));
+    const current = hashSource(fs.readFileSync(fullPath));
     if (entries.some(e => e.fileHash === current)) continue;
     stale.push({ file, status: 'stale', date: latest.date, notes: latest.notes || [] });
   }

@@ -448,7 +448,7 @@ program
       title: sourceTitle,
       date: new Date().toISOString().slice(0, 10),
       file: sourceFile,
-      fileHash: hashSource(fs.readFileSync(path.join(sourcesDir, sourceFile), 'utf8')),
+      fileHash: hashSource(fs.readFileSync(path.join(sourcesDir, sourceFile))),
       notes: derivedNotes
     };
     fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
