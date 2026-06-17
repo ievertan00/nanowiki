@@ -15,6 +15,8 @@
 
 ---
 
+![](D:\Projects\wiki\assets\大模型驱动个人知识库系统.png)
+
 ## Philosophy
 
 Inspired by [Andrej Karpathy's vision for an "llm-wiki"](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
