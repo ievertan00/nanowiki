@@ -68,7 +68,8 @@ That's it. Point Obsidian at `WIKI_PATH` and your knowledge graph is already the
 |---|---|---|
 | **LLM** | Any OpenAI-compatible API | The host agent (Claude, Gemini, …) |
 | **API key** | Required | None — uses the agent's own model |
-| **Image/scanned PDF** | Not supported | Agent reads and transcribes visually |
+| **Image** | OCR'd via `tesseract.js` | Agent reads and transcribes visually |
+| **Scanned PDF** | Not supported | Agent reads and transcribes visually |
 | **Install** | `npm link` | `npx skills add ievertan00/nanowiki` |
 
 Both front ends write to the same vault. You can mix and match freely.
@@ -209,6 +210,7 @@ The loop then continues across days: each saved note ends with `Open Questions`,
 ```powershell
 wiki ingest attention-paper.md                 # bare name resolves under <vault>/sources/
 wiki ingest attention-paper.pdf                # PDF text is extracted automatically
+wiki ingest whiteboard-photo.png               # image text is OCR'd via tesseract.js
 wiki ingest https://example.com/great-post    # URLs are fetched into sources/ first
 ```
 
@@ -220,10 +222,10 @@ A single source may update many notes: the LLM extracts a summary plus targeted 
 | --- | --- | --- |
 | Markdown/text | read directly | read directly |
 | PDF | text extracted via `pdf-parse` (text-based PDFs only) | read via the agent's Read tool (chunked by page range if >20 pages) |
-| Image | not supported | read visually and transcribed by the agent |
+| Image | OCR'd via `tesseract.js` (pure-WASM, `eng+chi_sim`) | read visually and transcribed by the agent |
 | Web/YouTube URL | fetched to `sources/` via Jina Reader, then ingested | fetched and reduced to Markdown by the agent's own fetch tool |
 
-The skill front end is the LLM doing its own reading, so it covers scanned PDFs and standalone images the CLI's `pdf-parse` path cannot.
+The CLI OCRs standalone image files locally — `tesseract.js` is pure-WASM (no system binary), recognizes English + Simplified Chinese, and downloads its traineddata on first use, caching it thereafter. Scanned/image-only PDFs still need the skill front end (which reads them visually via the agent), since the CLI would have to rasterize PDF pages first.
 
 ### Why one literature note per source?
 

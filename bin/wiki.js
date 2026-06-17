@@ -15,6 +15,7 @@ import { loadPersona, loadStructure } from '../src/templates.js';
 import { syncSourceMarkers } from '../src/validator.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
 import pdfParse from 'pdf-parse';
+import { isImageFile, ocrImage } from '../src/ocr.js';
 import { updateMOC, updateIndex, updateWikiDomains, updateQuestions, hashSource, findStaleSources, renderStaleSources } from '../src/meta.js';
 
 const program = new Command();
@@ -339,6 +340,10 @@ program
       }
       if (path.extname(localFile).toLowerCase() === '.pdf') {
         sourceContent = (await pdfParse(fs.readFileSync(localFile))).text;
+      } else if (isImageFile(localFile)) {
+        // Images have no text to readFileSync — OCR them via tesseract.js. The
+        // recognized text then flows through the same ledger/literature/fan-out path.
+        sourceContent = await ocrImage(localFile);
       } else {
         sourceContent = fs.readFileSync(localFile, 'utf8');
       }
