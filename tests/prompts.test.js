@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { getContentPrompt, getFormatPrompt, getExtractionPrompt, getRefinePrompt, getNoteUpdatePrompt, getRepairPrompt, getQueryPrompt, getSynthesisFrontmatterPrompt } from '../src/prompts.js';
+import { getContentPrompt, getFormatPrompt, getExtractionPrompt, getRefinePrompt, getSuggestionsPrompt, getNoteUpdatePrompt, getRepairPrompt, getQueryPrompt, getSynthesisFrontmatterPrompt } from '../src/prompts.js';
 
 describe('getContentPrompt', () => {
   test('passes the question through and sets the language line', () => {
@@ -221,5 +221,15 @@ describe('getRefinePrompt', () => {
     const { system } = getRefinePrompt('the draft answer', 'follow up', 'en');
     assert.doesNotMatch(system, /PERSONA:/);
     assert.doesNotMatch(system, /FOCUS AREAS:/);
+  });
+});
+
+describe('getSuggestionsPrompt', () => {
+  test('embeds the answer and asks for a JSON list of follow-up questions', () => {
+    const { system, user } = getSuggestionsPrompt('the draft answer', 'en');
+    assert.match(user, /ANSWER:\nthe draft answer/);
+    assert.match(system, /3 follow-up questions/);
+    assert.match(system, /"questions":/);
+    assert.match(system, /Respond in English\./);
   });
 });

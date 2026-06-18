@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { getContentPrompt, getFormatPrompt, getRefinePrompt, getRepairPrompt, getQueryPrompt, getSynthesisFrontmatterPrompt } from './prompts.js';
+import { getContentPrompt, getFormatPrompt, getRefinePrompt, getSuggestionsPrompt, getRepairPrompt, getQueryPrompt, getSynthesisFrontmatterPrompt } from './prompts.js';
 import { getProvider } from './provider.js';
 import { validateNote } from './validator.js';
 
@@ -146,6 +146,22 @@ export async function synthesize(config, { question, answer, providerName = 'def
 export async function refineAnswer(config, { answer, followUp, providerName = 'default', personaText, structureText }, OpenAIClient = OpenAI) {
   const prompt = getRefinePrompt(answer, followUp, config.language || 'zh', { personaText, structureText });
   return chat(config, providerName, OpenAIClient, prompt);
+}
+
+// Interactive ask: propose related follow-up questions for the refine loop.
+// Best-effort — a malformed reply yields no suggestions rather than throwing, so a
+// failed suggestion call never blocks the user from typing their own follow-up.
+export async function suggestQuestions(config, { answer, providerName = 'default' }, OpenAIClient = OpenAI) {
+  const prompt = getSuggestionsPrompt(answer, config.language || 'zh');
+  const raw = await chat(config, providerName, OpenAIClient, prompt, { json: true });
+  try {
+    const parsed = JSON.parse((raw || '').replace(/```json|```/g, '').trim());
+    return Array.isArray(parsed.questions)
+      ? parsed.questions.filter(q => typeof q === 'string' && q.trim()).map(q => q.trim())
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 // Pass 2: reshape content into the note skeleton + frontmatter, then verify.

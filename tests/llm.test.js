@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateNote, answerQuestion, refineAnswer, formatNote, repairNote, carryCreated, carryAliases, queryWiki, synthesize } from '../src/llm.js';
+import { generateNote, answerQuestion, refineAnswer, suggestQuestions, formatNote, repairNote, carryCreated, carryAliases, queryWiki, synthesize } from '../src/llm.js';
 import { validateNote } from '../src/validator.js';
 
 const VALID_BODY = [
@@ -288,6 +288,20 @@ describe('interactive ask pieces', () => {
     }, MockOpenAI);
     assert.match(calls[0].payload.messages[0].content, /PERSONA:\nExplain like a beginner\./);
     assert.match(calls[0].payload.messages[0].content, /FOCUS AREAS:\n[^\n]+\nMention costs and limitations\./);
+  });
+
+  test('suggestQuestions parses the JSON questions array', async () => {
+    const { MockOpenAI, calls } = makeMock([JSON.stringify({ questions: ['Q1?', 'Q2?', 'Q3?'] })]);
+    const out = await suggestQuestions(config, { answer: 'the answer' }, MockOpenAI);
+    assert.deepStrictEqual(out, ['Q1?', 'Q2?', 'Q3?']);
+    assert.strictEqual(calls[0].payload.response_format.type, 'json_object');
+    assert.match(calls[0].payload.messages[1].content, /ANSWER:\nthe answer/);
+  });
+
+  test('suggestQuestions returns [] on a malformed reply instead of throwing', async () => {
+    const { MockOpenAI } = makeMock(['not json at all']);
+    const out = await suggestQuestions(config, { answer: 'x' }, MockOpenAI);
+    assert.deepStrictEqual(out, []);
   });
 
   test('formatNote forces type and source title when given', async () => {

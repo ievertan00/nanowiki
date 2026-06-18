@@ -21,7 +21,8 @@ wiki init [path]              # bootstrap a vault (the four dirs + seeded wiki-c
                               #   The one command that runs WITHOUT a configured WIKI_PATH — it creates the
                               #   vault that WIKI_PATH will then point at. No skill counterpart.
 wiki ask "<question>"         # answer (pass 1) -> interactive refine loop (TTY only) -> format+save (pass 2)
-                              #   "Any further question? [Y/n]": Enter/y = refine the free-form answer, n = format and save once
+                              #   "Any further question? [Y/n]": Enter/y = refine the free-form answer (offers 2-3 related
+                              #     follow-up suggestions to pick by number or type your own), n = format and save once
                               #   non-TTY stdin/stdout (pipes, scripts) skips the loop entirely
 wiki query "<question>"       # closed-world counterpart of ask: answer FROM the existing notes only
                               #   (top-12 by retrieval, full note contents in the prompt), grounded with

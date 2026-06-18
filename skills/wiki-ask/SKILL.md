@@ -40,7 +40,7 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
 3. **Pass 1 — Answer.** Answer the question accurately and thoroughly, as if explaining
    to a knowledgeable colleague. No schema, no frontmatter — just the best free-form
    answer, in the resolved language (technical terms stay English). Keep this raw text;
-   it becomes the source record.
+   the **final** version (after the refine loop in step 4) becomes the source record.
 
    - If a **persona** template was loaded, let its text shape the voice/framing of
      this answer.
@@ -50,29 +50,49 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
    - Both are **pass-1 only**: pass 2 (Format) below is unaffected — it just reshapes
      whatever this richer answer contains.
 
-4. **Pass 2 — Format.** Reshape the pass-1 answer into the note schema from
+4. **Refine loop — interactive (mirrors the CLI's `ask` loop).** Before formatting,
+   let the user drive the answer further. Repeat these sub-steps until the user is done:
+
+   1. Show the current free-form answer.
+   2. Ask **"Any further question? [Y/n]"** and, to help the user go deeper, list
+      **2–3 related follow-up questions** drawn from the current answer — distinct
+      directions it hints at but does not fully resolve. Then **stop and wait for the
+      user's reply** (do not continue to step 5 on your own).
+   3. If the user declines (`n`/no/done/nothing/empty reply), **end the loop** and
+      proceed to step 5 with the answer exactly as it stands.
+   4. Otherwise take their follow-up — text they typed, or one of the suggested
+      questions they picked (e.g. by number) — and **revise the answer**: if it is a new
+      question, answer it and merge the result in; if it is an instruction, revise
+      accordingly. Preserve everything the follow-up does not affect. The revised text
+      is the new current answer; loop back to sub-step 1.
+
+   Keep any persona/structure guidance applied across every revision, exactly as in
+   pass 1. Only the **final** answer — after the last round — is formatted and saved;
+   intermediate rounds are never written to disk.
+
+5. **Pass 2 — Format.** Reshape the **final** answer into the note schema from
    `note-schema.md`:
    - Assign `domain`/`topic` against the existing taxonomy (closest match, or a new
      concise one if nothing fits).
    - `type`: use `--type` if given, else `atomic`.
    - In `## Connections`, link **only** to notes from the existing-notes list. If none
      apply, leave it empty.
-   - Add no information beyond what is in the pass-1 answer.
-   - Set `source: "[[<slug>]]"` (the note slug from step 5) — a quoted wikilink to the
-     pass-1 answer that step 6 saves at `sources/<slug>.md`, so the note's source is a
+   - Add no information beyond what is in the final answer.
+   - Set `source: "[[<slug>]]"` (the note slug from step 6) — a quoted wikilink to the
+     final answer that step 7 saves at `sources/<slug>.md`, so the note's source is a
      clickable link. No extension: the source is a `.md` file.
    - End every `## Source Facts` bullet with the citation marker ` ^[<slug>]`, where
-     `<slug>` is the note slug from step 5: the pass-1 answer is the source of this
-     note, and step 6 saves it at `sources/<slug>.md` — the file those markers resolve
+     `<slug>` is the note slug from step 6: the final answer is the source of this
+     note, and step 7 saves it at `sources/<slug>.md` — the file those markers resolve
      to.
 
-5. **Write the note.** Derive `title`/`domain`/`topic` from the frontmatter you just
+6. **Write the note.** Derive `title`/`domain`/`topic` from the frontmatter you just
    wrote (fall back to the question, truncated, if no title). Compute the slug and
    write `notes/<slug>.md`.
 
-6. **Save the source.** Write the raw pass-1 answer to `sources/<slug>.md` with this
-   header, so the unformatted answer is never lost and the note's `^[<slug>]` citation
-   markers resolve to it:
+7. **Save the source.** Write the **final** (refined) answer to `sources/<slug>.md` with
+   this header, so the unformatted answer is never lost and the note's `^[<slug>]`
+   citation markers resolve to it:
    ```
    ---
    title: <noteTitle>
@@ -80,12 +100,12 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
    created: <YYYY-MM-DD today>
    ---
 
-   <raw pass-1 answer>
+   <final free-form answer>
    ```
 
-7. **Regenerate** derived files:
+8. **Regenerate** derived files:
    ```powershell
    node "<SKILL_DIR>\wiki-maintain.mjs" "<vaultPath>" --op ask --title "<noteTitle>"
    ```
 
-8. **Report** the saved note path and the assigned domain/topic to the user.
+9. **Report** the saved note path and the assigned domain/topic to the user.

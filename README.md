@@ -191,7 +191,8 @@ wiki ask "<question>"
   → pass 1 (answer)
   → render answer to terminal
   → "Any further question? [Y/n]"        (Enter or y/Y = continue; n/N = finish)
-      Y → prompt for follow-up ("Rewrite section 2 to mention KV-cache constraints…")
+      Y → suggestQuestions() lists 2–3 related follow-ups to pursue next
+        → prompt for follow-up (type your own, or a number to pick a suggestion)
         → refineAnswer() returns the complete updated answer → render → loop
       N → save ONCE:
           final refined answer to sources/<slug>.md — the note's source of record,

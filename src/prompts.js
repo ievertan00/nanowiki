@@ -181,6 +181,17 @@ export function getRefinePrompt(answer, followUp, lang = 'zh', guidance = {}) {
   };
 }
 
+// Interactive ask: between refine rounds, propose a few related follow-up questions
+// the user might pursue next — directions the current answer hints at but does not
+// fully cover. Pure inspiration for the loop (the user picks one or types their own),
+// so it returns JSON for a clean parse and stays free-form (no schema/link rules).
+export function getSuggestionsPrompt(answer, lang = 'zh') {
+  return {
+    system: `You are helping a curious user decide what to explore next. Given the answer below, propose exactly 3 follow-up questions that naturally extend it — each a distinct, genuinely interesting direction the answer hints at but does not fully resolve. Keep each question short and specific. Respond only with valid JSON — no prose, no code fences.\n${contentLangLine(lang)}\n\nReturn ONLY a JSON object of exactly this shape:\n{"questions": ["...", "...", "..."]}`,
+    user: `ANSWER:\n${answer}`
+  };
+}
+
 // Closed-world query: answer FROM the vault instead of into it — the inverse of
 // ask's open-world pass 1. The model sees full note contents and must ground
 // every claim in them. Free-form output: the answer is printed, never saved, so

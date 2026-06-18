@@ -7,7 +7,7 @@ import readline from 'node:readline/promises';
 import { loadConfig, saveTaxonomy } from '../src/config.js';
 import { initVault, appendLog } from '../src/vault.js';
 import { buildCatalog, selectCandidates } from '../src/retrieve.js';
-import { generateNote, answerQuestion, refineAnswer, formatNote, queryWiki, synthesize } from '../src/llm.js';
+import { generateNote, answerQuestion, refineAnswer, suggestQuestions, formatNote, queryWiki, synthesize } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
 import { lintWiki, consolidateDomains, applyLintOps, checkCitations, renameToSchema, backfillSources } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight, sourceWikilink } from '../src/note.js';
@@ -136,8 +136,23 @@ program
         console.log('\n' + answer + '\n');
         const more = (await rl.question(chalk.cyan('Any further question? [Y/n] '))).trim();
         if (/^n/i.test(more)) break;
-        const followUp = (await rl.question(chalk.cyan('> '))).trim();
+
+        // Offer related follow-ups to pursue next: the user can type a number to
+        // pick one, or just type their own question. Best-effort — a failed
+        // suggestion call simply shows nothing rather than blocking the prompt.
+        let suggestions = [];
+        try {
+          suggestions = await suggestQuestions(config, { answer, providerName: options.provider });
+        } catch { /* suggestions are optional */ }
+        if (suggestions.length) {
+          console.log(chalk.gray('Related questions you might ask:'));
+          suggestions.forEach((q, i) => console.log(chalk.gray(`  ${i + 1}. ${q}`)));
+        }
+
+        let followUp = (await rl.question(chalk.cyan('> '))).trim();
         if (!followUp) continue;
+        const picked = /^\d+$/.test(followUp) ? suggestions[Number(followUp) - 1] : null;
+        if (picked) followUp = picked;
         console.log(chalk.blue('Updating answer...'));
         answer = await refineAnswer(config, { answer, followUp, providerName: options.provider, personaText, structureText });
       }
