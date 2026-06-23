@@ -78,21 +78,26 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
    - In `## Connections`, link **only** to notes from the existing-notes list. If none
      apply, leave it empty.
    - Add no information beyond what is in the final answer.
-   - Set `source: "[[<slug>]]"` (the note slug from step 6) — a quoted wikilink to the
-     final answer that step 7 saves at `sources/<slug>.md`, so the note's source is a
-     clickable link. No extension: the source is a `.md` file.
-   - End every `## Source Facts` bullet with the citation marker ` ^[<slug>]`, where
-     `<slug>` is the note slug from step 6: the final answer is the source of this
-     note, and step 7 saves it at `sources/<slug>.md` — the file those markers resolve
-     to.
+   - Set `source: "[[<sourceSlug>]]"` — a quoted wikilink to the final answer that step 7
+     saves at `sources/<sourceSlug>.md`, so the note's source renders as a clickable link.
+     `<sourceSlug>` is the **title alone**, slugified — **NOT** the note's
+     `<domain>-<topic>-<title>` filename. It MUST differ from the note's own filename:
+     a source file that shares the note's basename makes `[[...]]` ambiguous, and Obsidian
+     resolves it back to the note instead of the source. No extension — the source is `.md`.
+   - End every `## Source Facts` bullet with the citation marker ` ^[<sourceSlug>]` (the
+     same title slug): the final answer is the source of this note, saved at
+     `sources/<sourceSlug>.md` in step 7 — the file those markers resolve to.
 
 6. **Write the note.** Derive `title`/`domain`/`topic` from the frontmatter you just
-   wrote (fall back to the question, truncated, if no title). Compute the slug and
-   write `notes/<slug>.md`.
+   wrote (fall back to the question, truncated, if no title). Compute the note slug
+   `<noteSlug>` = `<domain>-<topic>-<title>` (the slug rule in `note-schema.md`) and write
+   `notes/<noteSlug>.md`.
 
-7. **Save the source.** Write the **final** (refined) answer to `sources/<slug>.md` with
-   this header, so the unformatted answer is never lost and the note's `^[<slug>]`
-   citation markers resolve to it:
+7. **Save the source.** Write the **final** (refined) answer to `sources/<sourceSlug>.md`,
+   where `<sourceSlug>` is the **title alone**, slugified the same way — the exact value you
+   put in the note's `source:` and `^[...]` markers, and distinct from `<noteSlug>` so the
+   wikilink is unambiguous. Use this header, so the unformatted answer is never lost and the
+   note's `^[<sourceSlug>]` citation markers resolve to it:
    ```
    ---
    title: <noteTitle>
