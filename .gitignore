@@ -4,7 +4,11 @@ node_modules/
 
 # Documentation
 # Ignoring project documentation as requested.
-docs/
+docs/*
+!docs/philosophy.md
+!docs/pkm-philosophy-polish.md
+!docs/note-taking-loop-improvements.md
+!docs/llm-wiki-v2-practices-for-nanowiki.md
 social-card-nanowiki/
 .agents/
 

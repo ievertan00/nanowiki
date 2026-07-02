@@ -232,4 +232,9 @@ describe('getSuggestionsPrompt', () => {
     assert.match(system, /"questions":/);
     assert.match(system, /Respond in English\./);
   });
+
+  test('accepts a custom question count', () => {
+    const { system } = getSuggestionsPrompt('the draft answer', 'en', 10);
+    assert.match(system, /exactly 10 follow-up questions/);
+  });
 });

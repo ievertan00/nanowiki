@@ -15,7 +15,7 @@
 
 ---
 
-![大模型驱动个人知识库系统](assets/architecture.png.png)
+![大模型驱动个人知识库系统](assets/architecture.png)
 
 ## Philosophy
 
@@ -23,11 +23,18 @@ Inspired by [Andrej Karpathy's vision for an "llm-wiki"](https://gist.github.com
 
 > You never (or rarely) write the wiki yourself — **the LLM writes and maintains all of it.** You are in charge of sourcing, exploration, and asking the right questions.
 
-We talk to LLMs every day, but those conversations are scattered — across browser tabs, desktop apps, and phones. They fade as time goes by, or stay where they happened and are never recalled. Nanowiki turns them into durable knowledge assets: every question becomes a permanent, linked, searchable note in a local vault you own, available at any time.
+Nanowiki is for people whose real thinking already happens with LLMs, but whose best conversations still disappear into disposable chat history. It is not another notes app. It is a local knowledge compiler: you choose the questions and sources; the LLM maintains the graph.
 
-- **Obsidian is the IDE.** You read, navigate, and annotate the vault there.
-- **The LLM is the programmer.** It writes every note, draws every link, and keeps the indexes fresh.
-- **The wiki is the codebase.** Plain Markdown files — local, readable, greppable, and yours forever.
+The promise is not that the model is always right. The promise is that useful AI cognition becomes durable, inspectable, revisable knowledge: Markdown notes, typed links, source-aware facts, Maps of Content, indexes, logs, and open-question queues in a vault you own.
+
+- **The human owns judgment.** You decide what is worth asking, which sources matter, what deserves promotion, and when a synthesis is weak.
+- **The LLM owns maintenance.** It drafts, links, formats, classifies, and keeps the graph moving.
+- **Code owns invariants.** Dates, schema validity, source preservation, dead-link removal, collision guards, and the Human Insight section are protected outside the model.
+- **Obsidian is the IDE.** You read, navigate, annotate, and inspect the vault there, but the real artifact is plain Markdown files.
+
+Nanowiki rejects filing as the center of knowledge work. Folders, perfect tags, and manual index upkeep should not be the main job. The graph should grow through deliberate promotion - not automatic transcript hoarding - and remain readable, greppable, versionable, and portable.
+
+See [docs/philosophy.md](docs/philosophy.md) for the full positioning and design principles.
 
 ---
 
@@ -83,12 +90,13 @@ Both front ends write to the same vault. You can mix and match freely.
 | `ask "<question>"` | Answer a question, then format the answer into a new linked note. Interactive refine loop before saving. |
 | `query "<question>"` | Answer from your existing notes only, with `[[note]]` citations. Read-only. |
 | `ingest <file\|url>` | Write a literature note for a source, then fan out targeted additions to related notes. |
+| `deep-ingest <file\|url>` | Ingest a source, generate reviewable grounded follow-up questions, save synthesis notes, then lint. |
 | `rewrite <file>` | Reformat a draft or rough file into the note schema (Human Insight preserved). |
 | `update <note> "<info>"` | Integrate new information into one existing note in place. |
 | `lint` | Health-check the vault: consolidate domains, surface contradictions, orphans, thin notes. |
 | `questions` | Harvest every `## Open Questions` + dead-link wishlist into a worklist for your next `ask`. |
 
-Five of these are also available as agent slash commands (`/wiki-ask`, `/wiki-query`, `/wiki-ingest`, `/wiki-rewrite`, `/wiki-lint`).
+Six of these are also available as agent slash commands (`/wiki-ask`, `/wiki-query`, `/wiki-ingest`, `/wiki-deep-ingest`, `/wiki-rewrite`, `/wiki-lint`).
 
 ---
 
@@ -521,7 +529,7 @@ The vault's `wiki-config.json` owns the live domain/topic taxonomy (the LLM grow
 
 ## Skills
 
-The `skills/` folder ships the same five operations as **native agent skills** — `wiki-ask`, `wiki-query`, `wiki-rewrite`, `wiki-ingest`, `wiki-lint` — that run _inside_ a coding agent (Claude Code, Gemini CLI, and similar). The host agent is the generator, so **no provider or API key is needed**; the vault is the directory the agent was launched in.
+The `skills/` folder ships the same six operations as **native agent skills** — `wiki-ask`, `wiki-query`, `wiki-rewrite`, `wiki-ingest`, `wiki-deep-ingest`, `wiki-lint` — that run _inside_ a coding agent (Claude Code, Gemini CLI, and similar). The host agent is the generator, so **no provider or API key is needed**; the vault is the directory the agent was launched in.
 
 **Quickest install — no clone needed:**
 
@@ -547,6 +555,7 @@ It targets `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI
 /wiki-ask "What is KV cache?"
 /wiki-query "What does my wiki say about attention?"
 /wiki-ingest paper.md
+/wiki-deep-ingest paper.md --questions 10
 /wiki-rewrite rough-notes.md
 /wiki-lint
 ```

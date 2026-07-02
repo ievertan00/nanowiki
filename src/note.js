@@ -118,9 +118,21 @@ export function sourceWikilink(filename) {
   return `"[[${target}]]"`;
 }
 
+function slugifyFileBase(title) {
+  return title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function uniqueFilePath(dir, base, ext) {
+  let filename = `${base}${ext}`;
+  if (!fs.existsSync(path.join(dir, filename))) return path.join(dir, filename);
+  let n = 2;
+  while (fs.existsSync(path.join(dir, `${base}-${n}${ext}`))) n++;
+  return path.join(dir, `${base}-${n}${ext}`);
+}
+
 export function saveSource(wikiPath, { title, question, content }) {
-  const filename = title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + '.md';
-  const fullPath = path.join(wikiPath, 'sources', filename);
+  const sourcesDir = path.join(wikiPath, 'sources');
+  const fullPath = uniqueFilePath(sourcesDir, slugifyFileBase(title), '.md');
   const today = new Date().toISOString().slice(0, 10);
   const header = `---\ntitle: ${title}\nquestion: ${question}\ncreated: ${today}\n---\n\n`;
   fs.writeFileSync(fullPath, header + content);
@@ -128,8 +140,8 @@ export function saveSource(wikiPath, { title, question, content }) {
 }
 
 export function saveFetchedSource(wikiPath, { title, url, content, sourceType = 'web' }) {
-  const filename = title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + '.md';
-  const fullPath = path.join(wikiPath, 'sources', filename);
+  const sourcesDir = path.join(wikiPath, 'sources');
+  const fullPath = uniqueFilePath(sourcesDir, slugifyFileBase(title), '.md');
   const today = new Date().toISOString().slice(0, 10);
   const header = `---\ntitle: ${title}\nurl: ${url}\ntype: ${sourceType}\nfetched: ${today}\n---\n\n`;
   fs.writeFileSync(fullPath, header + content);

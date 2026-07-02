@@ -151,8 +151,8 @@ export async function refineAnswer(config, { answer, followUp, providerName = 'd
 // Interactive ask: propose related follow-up questions for the refine loop.
 // Best-effort — a malformed reply yields no suggestions rather than throwing, so a
 // failed suggestion call never blocks the user from typing their own follow-up.
-export async function suggestQuestions(config, { answer, providerName = 'default' }, OpenAIClient = OpenAI) {
-  const prompt = getSuggestionsPrompt(answer, config.language || 'zh');
+export async function suggestQuestions(config, { answer, providerName = 'default', count = 3 }, OpenAIClient = OpenAI) {
+  const prompt = getSuggestionsPrompt(answer, config.language || 'zh', count);
   const raw = await chat(config, providerName, OpenAIClient, prompt, { json: true });
   try {
     const parsed = JSON.parse((raw || '').replace(/```json|```/g, '').trim());

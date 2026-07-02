@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { saveNote, schemaName, extractHumanInsight, restoreHumanInsight, appendToSection, sourceWikilink } from '../src/note.js';
+import { saveNote, saveSource, saveFetchedSource, schemaName, extractHumanInsight, restoreHumanInsight, appendToSection, sourceWikilink } from '../src/note.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -150,6 +150,39 @@ describe('sourceWikilink', () => {
 
   test('extension match is case-insensitive', () => {
     assert.strictEqual(sourceWikilink('Doc.MD'), '"[[Doc]]"');
+  });
+});
+
+describe('source saving', () => {
+  let vault;
+
+  beforeEach(() => {
+    vault = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-test-source-'));
+    fs.mkdirSync(path.join(vault, 'sources'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(vault, { recursive: true, force: true });
+  });
+
+  test('saveSource suffixes collisions instead of overwriting the source record', () => {
+    const first = saveSource(vault, { title: 'Same Question', question: 'q1', content: 'answer one' });
+    const second = saveSource(vault, { title: 'Same Question', question: 'q2', content: 'answer two' });
+
+    assert.strictEqual(path.basename(first), 'Same-Question.md');
+    assert.strictEqual(path.basename(second), 'Same-Question-2.md');
+    assert.match(fs.readFileSync(first, 'utf8'), /answer one/);
+    assert.match(fs.readFileSync(second, 'utf8'), /answer two/);
+  });
+
+  test('saveFetchedSource suffixes collisions instead of overwriting fetched sources', () => {
+    const first = saveFetchedSource(vault, { title: 'Same Article', url: 'https://example.com/1', content: 'version one' });
+    const second = saveFetchedSource(vault, { title: 'Same Article', url: 'https://example.com/2', content: 'version two' });
+
+    assert.strictEqual(path.basename(first), 'Same-Article.md');
+    assert.strictEqual(path.basename(second), 'Same-Article-2.md');
+    assert.match(fs.readFileSync(first, 'utf8'), /version one/);
+    assert.match(fs.readFileSync(second, 'utf8'), /version two/);
   });
 });
 

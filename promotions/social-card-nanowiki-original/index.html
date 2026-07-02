@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Nanowiki Original Social Set</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root {
+      --paper: #f7f3ea;
+      --paper-2: #eee6d6;
+      --ink: #11110f;
+      --muted: #69645a;
+      --line: #cfc4b2;
+      --green: #1a7f46;
+      --green-2: #d9eadc;
+      --black: #151515;
+      --white: #fffaf0;
+      --red: #a64028;
+      --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      --sans: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: #252525;
+      font-family: var(--sans);
+      color: var(--ink);
+      padding: 48px;
+    }
+    .sheet {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 48px;
+    }
+    .poster {
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, rgba(17,17,15,.035) 1px, transparent 1px),
+        linear-gradient(rgba(17,17,15,.03) 1px, transparent 1px),
+        var(--paper);
+      background-size: 36px 36px;
+      color: var(--ink);
+    }
+    .xhs { width: 1080px; height: 1440px; }
+    .wide { width: 2100px; height: 900px; }
+    .square { width: 1080px; height: 1080px; }
+
+    .pad { width: 100%; height: 100%; padding: 74px 78px; display: flex; flex-direction: column; }
+    .wide .pad { padding: 80px 120px; }
+    .square .pad { padding: 86px; }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--ink);
+      padding-bottom: 18px;
+      font-family: var(--mono);
+      font-size: 19px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .kicker {
+      font-family: var(--mono);
+      color: var(--green);
+      letter-spacing: .08em;
+      font-size: 24px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin: 0;
+    }
+    h1, h2, h3, p { margin: 0; }
+    .headline {
+      font-size: 105px;
+      line-height: 1.06;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+    .headline.big { font-size: 122px; }
+    .headline.sm { font-size: 90px; }
+    .lead {
+      font-size: 32px;
+      line-height: 1.55;
+      font-weight: 450;
+    }
+    .note {
+      color: var(--muted);
+      font-size: 24px;
+      line-height: 1.45;
+    }
+    .mono {
+      font-family: var(--mono);
+      letter-spacing: .04em;
+    }
+    .section {
+      margin-top: 58px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .grow { flex: 1; }
+
+    .command {
+      background: var(--black);
+      color: var(--white);
+      padding: 34px 38px;
+      font-family: var(--mono);
+      font-size: 28px;
+      line-height: 1.55;
+      border-left: 10px solid var(--green);
+    }
+    .command .dim { color: #9f9b90; }
+    .command .hi { color: #8de2ac; }
+    .command.small { font-size: 24px; padding: 28px 32px; }
+
+    .ledger {
+      display: grid;
+      border-top: 2px solid var(--ink);
+      border-left: 2px solid var(--ink);
+      background: var(--paper);
+    }
+    .ledger.three { grid-template-columns: .9fr 1fr 1fr; }
+    .ledger.four { grid-template-columns: .74fr .92fr 1fr 1fr; }
+    .ledger.two { grid-template-columns: 1fr 1fr; }
+    .cell {
+      min-height: 132px;
+      padding: 25px 26px;
+      border-right: 2px solid var(--ink);
+      border-bottom: 2px solid var(--ink);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      font-size: 26px;
+      line-height: 1.35;
+    }
+    .head {
+      background: var(--black);
+      color: var(--white);
+      font-family: var(--mono);
+      font-size: 18px;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+    .cell strong {
+      font-size: 31px;
+      line-height: 1.22;
+      font-weight: 700;
+    }
+    .cell.green {
+      background: var(--green);
+      color: var(--white);
+    }
+    .cell.soft {
+      background: var(--green-2);
+    }
+    .cell.warn {
+      background: #f2d9cd;
+      color: var(--red);
+    }
+
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      border-top: 2px solid var(--ink);
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 28px;
+      padding: 30px 0;
+      border-bottom: 2px solid var(--ink);
+      align-items: start;
+    }
+    .step .num {
+      font-family: var(--mono);
+      font-size: 48px;
+      color: var(--green);
+      font-weight: 700;
+    }
+    .step .txt {
+      font-size: 31px;
+      line-height: 1.36;
+      font-weight: 650;
+    }
+    .step .sub {
+      display: block;
+      font-size: 24px;
+      color: var(--muted);
+      font-weight: 400;
+      margin-top: 8px;
+    }
+    .file-tree {
+      background: var(--black);
+      color: var(--white);
+      padding: 34px 38px;
+      font-family: var(--mono);
+      font-size: 26px;
+      line-height: 1.65;
+    }
+    .file-tree .g { color: #8de2ac; }
+    .footer {
+      margin-top: auto;
+      padding-top: 20px;
+      border-top: 2px solid var(--ink);
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 20px;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+    .callout {
+      border: 2px solid var(--ink);
+      background: var(--paper-2);
+      padding: 30px 34px;
+      font-size: 31px;
+      line-height: 1.4;
+      font-weight: 650;
+    }
+    .callout .small {
+      display: block;
+      color: var(--muted);
+      font-size: 24px;
+      font-weight: 400;
+      margin-top: 10px;
+    }
+    .wide-grid {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap: 80px;
+      align-items: center;
+    }
+    .wide .headline { font-size: 112px; }
+    .wide .ledger .cell { min-height: 118px; }
+    .square .headline { font-size: 100px; }
+    .pair-preview {
+      width: 1800px;
+      height: 720px;
+      background: #e9e9e4;
+      padding: 40px;
+      display: grid;
+      grid-template-columns: 1050px 540px;
+      gap: 60px;
+      overflow: hidden;
+    }
+    .preview-label {
+      font-family: var(--mono);
+      font-size: 18px;
+      letter-spacing: .08em;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+    .scale-wide { width: 1050px; height: 450px; overflow: hidden; }
+    .scale-square { width: 540px; height: 540px; overflow: hidden; }
+    .scale-wide > .poster,
+    .scale-square > .poster {
+      transform: scale(.5);
+      transform-origin: top left;
+    }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <section class="poster xhs" id="xhs-01">
+      <div class="pad">
+        <div class="topbar"><span>Nanowiki Field Manual</span><span>01 / 09</span></div>
+        <div class="section">
+          <p class="kicker">不是保存聊天</p>
+          <h1 class="headline big">把 AI 对话<br>变成工作档案</h1>
+          <p class="lead">用实际任务演示 Nanowiki：提问、喂资料、查旧笔记、做体检，最后得到本地 Markdown 知识库。</p>
+        </div>
+        <div class="section">
+          <div class="ledger three">
+            <div class="cell head">任务</div><div class="cell head">命令</div><div class="cell head">产物</div>
+            <div class="cell"><strong>做市场判断</strong><span>新业务该不该进</span></div>
+            <div class="cell green"><strong>wiki ask</strong><span>-p investor<br>-s five-forces</span></div>
+            <div class="cell"><strong>决策笔记</strong><span>风险 / 机会 / 待验证</span></div>
+            <div class="cell"><strong>读论文</strong><span>把 PDF 变证据</span></div>
+            <div class="cell"><strong>wiki ingest</strong><span>-p reviewer<br>-s ml-paper-notes</span></div>
+            <div class="cell"><strong>文献笔记</strong><span>并反哺旧主题</span></div>
+          </div>
+        </div>
+        <div class="footer"><span>Ask / Ingest / Query / Lint</span><span>github.com/ievertan00/nanowiki</span></div>
+      </div>
+    </section>
+
+    <section class="poster xhs" id="xhs-02">
+      <div class="pad">
+        <div class="topbar"><span>Case A · Market Decision</span><span>02 / 09</span></div>
+        <div class="section">
+          <p class="kicker">案例 A：市场判断</p>
+          <h2 class="headline">同一个问题<br>先加工作框架</h2>
+          <div class="command">
+            <span class="dim">$</span> wiki ask <span class="hi">"Should we enter the AI note-taking market?"</span> \<br>
+            &nbsp;&nbsp;-p investor-decisionmaker \<br>
+            &nbsp;&nbsp;-s five-forces
+          </div>
+        </div>
+        <div class="section">
+          <div class="ledger four">
+            <div class="cell head">层</div><div class="cell head">作用</div><div class="cell head">逼问</div><div class="cell head">结果</div>
+            <div class="cell"><strong>Persona</strong><span>投资人视角</span></div><div class="cell">风险 / 回报</div><div class="cell">什么会让项目不值得做？</div><div class="cell soft">Synthesis</div>
+            <div class="cell"><strong>Structure</strong><span>五力模型</span></div><div class="cell">覆盖完整</div><div class="cell">竞争、替代品、议价权</div><div class="cell">Source Facts</div>
+          </div>
+        </div>
+        <div class="footer"><span>产物：一页可持续更新的市场判断笔记</span><span>human decides</span></div>
+      </div>
+    </section>
+
+    <section class="poster xhs" id="xhs-03">
+      <div class="pad">
+        <div class="topbar"><span>Case B · Paper Reading</span><span>03 / 09</span></div>
+        <div class="section">
+          <p class="kicker">案例 B：读一篇论文</p>
+          <h2 class="headline">论文不是<br>存进收藏夹</h2>
+          <div class="command">
+            <span class="dim">$</span> wiki ingest attention-paper.pdf \<br>
+            &nbsp;&nbsp;-p research-reviewer \<br>
+            &nbsp;&nbsp;-s ml-paper-notes
+          </div>
+        </div>
+        <div class="section">
+          <div class="step-list">
+            <div class="step"><div class="num">01</div><div class="txt">生成 literature note<span class="sub">核心观点、方法、实验、局限，都落到一个源头笔记里。</span></div></div>
+            <div class="step"><div class="num">02</div><div class="txt">反哺已有 atomic notes<span class="sub">和旧主题相关的新发现，会追加到对应笔记，不另造一堆碎片。</span></div></div>
+            <div class="step"><div class="num">03</div><div class="txt">自动重建 MOC / index / log<span class="sub">你不需要手动维护目录和索引。</span></div></div>
+          </div>
+        </div>
+        <div class="footer"><span>source first · graph second</span><span>no manual filing</span></div>
+      </div>
+    </section>
+
+    <section class="poster xhs" id="xhs-04">
+      <div class="pad">
+        <div class="topbar"><span>Case C · Learn Concept</span><span>04 / 09</span></div>
+        <div class="section">
+          <p class="kicker">案例 C：学一个技术概念</p>
+          <h2 class="headline">先理解<br>再入库</h2>
+          <div class="command"><span class="dim">$</span> wiki ask <span class="hi">"What is attention?"</span> -p feynman-explainer</div>
+        </div>
+        <div class="section">
+          <div class="ledger two">
+            <div class="cell soft"><strong>Source Facts</strong><span>回答里可追溯的事实点</span></div>
+            <div class="cell"><strong>Synthesis</strong><span>自己的理解和跨主题解释</span></div>
+            <div class="cell"><strong>Connections</strong><span>只链接真实存在的旧笔记</span></div>
+            <div class="cell soft"><strong>Open Questions</strong><span>下一轮继续 ask 的入口</span></div>
+            <div class="cell warn"><strong>Human Insight</strong><span>你写下的判断，AI 永不覆盖</span></div>
+            <div class="cell"><strong>MOC / Index</strong><span>保存后自动重建导航</span></div>
+          </div>
+        </div>
+        <div class="footer"><span>一条回答变成一页结构化 wiki note</span><span>schema protected</span></div>
+      </div>
+    </section>
+
+    <section class="poster xhs" id="xhs-05">
+      <div class="pad">
+        <div class="topbar"><span>Case D · Query The Vault</span><span>05 / 09</span></div>
+        <div class="section">
+          <p class="kicker">案例 D：写方案前查自己的库</p>
+          <h2 class="headline">不是问全网<br>是问自己</h2>
+          <div class="command"><span class="dim">$</span> wiki query <span class="hi">"What do my notes say about RAG evaluation?"</span></div>
+        </div>
+        <div class="section">
+          <div class="ledger three">
+            <div class="cell head">普通问 AI</div><div class="cell head">wiki query</div><div class="cell head">适合场景</div>
+            <div class="cell">可能给通用答案</div><div class="cell green"><strong>只用你的笔记回答</strong></div><div class="cell">写方案前复用旧研究</div>
+            <div class="cell">来源不稳定</div><div class="cell">带 [[note]] 引用</div><div class="cell">需要知道“我以前怎么想”</div>
+            <div class="cell">回答完又消失</div><div class="cell">可继续 ask / update</div><div class="cell">把旧知识变新输出</div>
+          </div>
+        </div>
+        <div class="footer"><span>closed-world answer</span><span>read-only by default</span></div>
+      </div>
+    </section>
+
+    <section class="poster xhs" id="xhs-06">
+      <div class="pad">
+        <div class="topbar"><span>Case E · Weekly Review</span><span>06 / 09</span></div>
+        <div class="section">
+          <p class="kicker">案例 E：周末复盘知识库</p>
+          <h2 class="headline">不是整理文件<br>是找问题</h2>
+          <div class="command"><span class="dim">$</span> wiki lint</div>
+        </div>
+        <div class="section">
+          <div class="ledger four">
+            <div class="cell head">发现</div><div class="cell head">含义</div><div class="cell head">位置</div><div class="cell head">下一步</div>
+            <div class="cell"><strong>Contradiction</strong></div><div class="cell">笔记之间说法冲突</div><div class="cell">meta/lint-date.md</div><div class="cell">人工判断</div>
+            <div class="cell"><strong>Orphan</strong></div><div class="cell">没有连接的孤立页</div><div class="cell">lint report</div><div class="cell">补 link 或合并</div>
+            <div class="cell"><strong>Thin note</strong></div><div class="cell">太薄，缺证据</div><div class="cell">questions.md</div><div class="cell green">下一次 ask</div>
+          </div>
+        </div>
+        <div class="footer"><span>AI 不替你判断，它把该判断的地方列出来</span><span>review loop</span></div>
+      </div>
+    </section>
+
+    <section class="poster xhs" id="xhs-07">
+      <div class="pad">
+        <div class="topbar"><span>Template Picker</span><span>07 / 09</span></div>
+        <div class="section">
+          <p class="kicker">persona + structure 怎么选</p>
+          <h2 class="headline">同一问题<br>换一种工作流</h2>
+        </div>
+        <div class="section">
+          <div class="ledger three">
+            <div class="cell head">你的任务</div><div class="cell head">persona</div><div class="cell head">structure</div>
+            <div class="cell"><strong>看懂概念</strong><span>注意力机制 / RAG</span></div><div class="cell">feynman-explainer</div><div class="cell">concept-deep-dive</div>
+            <div class="cell"><strong>评估论文</strong><span>方法是否靠谱</span></div><div class="cell">research-reviewer</div><div class="cell green">ml-paper-notes</div>
+            <div class="cell"><strong>做商业判断</strong><span>市场值不值得进</span></div><div class="cell">investor-decisionmaker</div><div class="cell">five-forces / 3c</div>
+            <div class="cell"><strong>找方案风险</strong><span>哪里会失败</span></div><div class="cell">inversion / red-team</div><div class="cell">swot / jtbd</div>
+          </div>
+        </div>
+        <div class="footer"><span>persona 决定怎么想</span><span>structure 决定别漏什么</span></div>
+      </div>
+    </section>
+
+    <section class="poster xhs" id="xhs-08">
+      <div class="pad">
+        <div class="topbar"><span>Files You Own</span><span>08 / 09</span></div>
+        <div class="section">
+          <p class="kicker">一轮之后真正得到什么</p>
+          <h2 class="headline">不是漂亮回答<br>是可维护资产</h2>
+        </div>
+        <div class="section">
+          <div class="file-tree">
+            <span class="g">wiki-vault/</span><br>
+            ├─ <span class="g">sources/</span> 原始回答、文章、PDF、URL<br>
+            ├─ <span class="g">notes/</span> 原子笔记与文献笔记<br>
+            ├─ <span class="g">moc/</span> 自动生成内容地图<br>
+            ├─ <span class="g">meta/</span> index、log、lint、questions<br>
+            └─ <span class="g">templates/</span> 你自己的 persona / structure
+          </div>
+          <div class="callout">关键区别：文件是你的，不是某个 App 里的黑盒记忆。<span class="small">可读、可改、可搜索、可用 Git 管。</span></div>
+        </div>
+        <div class="footer"><span>plain markdown</span><span>obsidian compatible</span></div>
+      </div>
+    </section>
+
+    <section class="poster xhs" id="xhs-09">
+      <div class="pad">
+        <div class="topbar"><span>Start Here</span><span>09 / 09</span></div>
+        <div class="section">
+          <p class="kicker">怎么开始</p>
+          <h2 class="headline big">拿一个<br>真实任务试</h2>
+          <div class="command">
+            <span class="dim">$</span> npx skills add ievertan00/nanowiki<br>
+            <span class="dim">$</span> /wiki-ask <span class="hi">"我这周最该研究的问题是什么?"</span>
+          </div>
+        </div>
+        <div class="section">
+          <div class="ledger three">
+            <div class="cell head">Work</div><div class="cell head">Life</div><div class="cell head">Study</div>
+            <div class="cell">项目研究<br>方案决策<br>技术复盘</div>
+            <div class="cell">阅读整理<br>长期目标<br>健康记录</div>
+            <div class="cell green">课程笔记<br>论文阅读<br>概念网络</div>
+          </div>
+        </div>
+        <div class="footer"><span>open source · MIT</span><span>github.com/ievertan00/nanowiki</span></div>
+      </div>
+    </section>
+
+    <section class="poster wide" id="wechat-21x9">
+      <div class="pad">
+        <div class="wide-grid">
+          <div>
+            <div class="topbar"><span>Nanowiki Field Manual</span><span>Text / Tables / Cases</span></div>
+            <div class="section">
+              <p class="kicker">Personal wiki CLI</p>
+              <h1 class="headline">用实际任务<br>演示 Nanowiki</h1>
+              <p class="lead">从市场判断、论文阅读、概念学习，到查询旧笔记和知识库体检。</p>
+            </div>
+          </div>
+          <div class="ledger three">
+            <div class="cell head">Command</div><div class="cell head">Use</div><div class="cell head">Result</div>
+            <div class="cell green">ask</div><div class="cell">问题 + 模板</div><div class="cell">决策笔记</div>
+            <div class="cell">ingest</div><div class="cell">PDF / URL</div><div class="cell">文献笔记</div>
+            <div class="cell">query / lint</div><div class="cell">复用 + 体检</div><div class="cell">下一步问题</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="poster square" id="wechat-1x1">
+      <div class="pad">
+        <div class="section">
+          <p class="kicker">Nanowiki</p>
+          <h1 class="headline">用案例<br>看懂 AI Wiki</h1>
+          <div class="callout">文字 + 表格版<span class="small">每页一个真实任务。</span></div>
+        </div>
+        <div class="footer"><span>Ask · Ingest · Query · Lint</span><span>Open Source</span></div>
+      </div>
+    </section>
+
+    <section class="pair-preview" id="wechat-pair-preview">
+      <div>
+        <p class="preview-label">WeChat 21:9 Main Cover</p>
+        <div class="scale-wide">
+          <section class="poster wide" style="transform-origin:top left">
+            <div class="pad">
+              <div class="wide-grid">
+                <div>
+                  <div class="topbar"><span>Nanowiki Field Manual</span><span>Text / Tables / Cases</span></div>
+                  <div class="section">
+                    <p class="kicker">Personal wiki CLI</p>
+                    <h1 class="headline">用实际任务<br>演示 Nanowiki</h1>
+                    <p class="lead">从市场判断、论文阅读、概念学习，到查询旧笔记和知识库体检。</p>
+                  </div>
+                </div>
+                <div class="ledger three">
+                  <div class="cell head">Command</div><div class="cell head">Use</div><div class="cell head">Result</div>
+                  <div class="cell green">ask</div><div class="cell">问题 + 模板</div><div class="cell">决策笔记</div>
+                  <div class="cell">ingest</div><div class="cell">PDF / URL</div><div class="cell">文献笔记</div>
+                  <div class="cell">query / lint</div><div class="cell">复用 + 体检</div><div class="cell">下一步问题</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div>
+        <p class="preview-label">WeChat 1:1 Square</p>
+        <div class="scale-square">
+          <section class="poster square" style="transform-origin:top left">
+            <div class="pad">
+              <div class="section">
+                <p class="kicker">Nanowiki</p>
+                <h1 class="headline">用案例<br>看懂 AI Wiki</h1>
+                <div class="callout">文字 + 表格版<span class="small">每页一个真实任务。</span></div>
+              </div>
+              <div class="footer"><span>Ask · Ingest · Query · Lint</span><span>Open Source</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

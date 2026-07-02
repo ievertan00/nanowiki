@@ -185,9 +185,9 @@ export function getRefinePrompt(answer, followUp, lang = 'zh', guidance = {}) {
 // the user might pursue next — directions the current answer hints at but does not
 // fully cover. Pure inspiration for the loop (the user picks one or types their own),
 // so it returns JSON for a clean parse and stays free-form (no schema/link rules).
-export function getSuggestionsPrompt(answer, lang = 'zh') {
+export function getSuggestionsPrompt(answer, lang = 'zh', count = 3) {
   return {
-    system: `You are helping a curious user decide what to explore next. Given the answer below, propose exactly 3 follow-up questions that naturally extend it — each a distinct, genuinely interesting direction the answer hints at but does not fully resolve. Keep each question short and specific. Respond only with valid JSON — no prose, no code fences.\n${contentLangLine(lang)}\n\nReturn ONLY a JSON object of exactly this shape:\n{"questions": ["...", "...", "..."]}`,
+    system: `You are helping a curious user decide what to explore next. Given the answer below, propose exactly ${count} follow-up questions that naturally extend it — each a distinct, genuinely interesting direction the answer hints at but does not fully resolve. Keep each question short and specific. Respond only with valid JSON — no prose, no code fences.\n${contentLangLine(lang)}\n\nReturn ONLY a JSON object of exactly this shape:\n{"questions": ["...", "..."]}`,
     user: `ANSWER:\n${answer}`
   };
 }

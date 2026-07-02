@@ -93,6 +93,259 @@ function resolveTemplates(cmdOptions) {
   }
 }
 
+async function resolveSourceArg(arg) {
+  let sourceContent, sourceTitle, fetched = null, localFile = null;
+  if (isUrl(arg)) {
+    console.log(chalk.blue(`Fetching ${arg}...`));
+    fetched = await fetchUrlSource(arg);
+    sourceContent = fetched.content;
+    sourceTitle = fetched.title;
+  } else {
+    const inSources = path.join(config.wikiPath, 'sources', arg);
+    localFile = fs.existsSync(inSources) ? inSources : arg;
+    if (!fs.existsSync(localFile)) {
+      throw new Error(`File not found: ${arg} (looked in ${path.join(config.wikiPath, 'sources')} and as a literal path)`);
+    }
+    if (path.extname(localFile).toLowerCase() === '.pdf') {
+      sourceContent = (await pdfParse(fs.readFileSync(localFile))).text;
+    } else if (isImageFile(localFile)) {
+      sourceContent = await ocrImage(localFile);
+    } else {
+      sourceContent = fs.readFileSync(localFile, 'utf8');
+    }
+    sourceTitle = path.basename(localFile, path.extname(localFile));
+  }
+  return { sourceContent, sourceTitle, fetched, localFile };
+}
+
+async function runIngestWorkflow(arg, { provider, force = false, personaText, structureText }) {
+  const { sourceContent, sourceTitle, fetched, localFile } = await resolveSourceArg(arg);
+
+  const sourceHash = hashSource(sourceContent);
+  const ledgerPath = path.join(config.wikiPath, 'meta', 'ingested.json');
+  const ledger = fs.existsSync(ledgerPath) ? JSON.parse(fs.readFileSync(ledgerPath, 'utf8')) : {};
+  if (ledger[sourceHash] && !force) {
+    console.log(chalk.yellow(`Already ingested on ${ledger[sourceHash].date} as "${ledger[sourceHash].title}". Use --force to re-ingest.`));
+    return { skipped: true, sourceTitle, prior: ledger[sourceHash] };
+  }
+
+  let sourceFile;
+  const sourcesDir = path.join(config.wikiPath, 'sources');
+  if (fetched) {
+    const savedSource = saveFetchedSource(config.wikiPath, fetched);
+    sourceFile = path.basename(savedSource);
+    console.log(chalk.green(`Source saved: ${savedSource}`));
+  } else if (path.resolve(path.dirname(localFile)).toLowerCase() === path.resolve(sourcesDir).toLowerCase()) {
+    sourceFile = path.basename(localFile);
+  } else {
+    const ext = path.extname(localFile);
+    sourceFile = path.basename(localFile, ext).replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '') + ext;
+    fs.copyFileSync(localFile, path.join(sourcesDir, sourceFile));
+    console.log(chalk.green(`Source copied: ${path.join(sourcesDir, sourceFile)}`));
+  }
+  const sourceSlug = path.basename(sourceFile, path.extname(sourceFile));
+
+  console.log(chalk.blue(`Ingesting "${sourceTitle}"... (provider: ${provider})`));
+  const candidates = selectCandidates(buildCatalog(config.wikiPath), sourceContent);
+  const { literatureNote, updates } = await ingestSource(config, {
+    sourceContent,
+    sourceTitle,
+    candidates,
+    providerName: provider,
+    personaText,
+    structureText
+  });
+
+  const literatureWithSource = literatureNote.replace(/^source:.*$/m, () => `source: ${sourceWikilink(sourceFile)}`);
+  const { domain, topic, title } = extractFrontmatter(literatureWithSource);
+  const noteTitle = title || sourceTitle;
+  const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: literatureWithSource });
+  if (renamed) warnCollision(savedPath, noteTitle);
+  saveTaxonomy(config.wikiPath, config, domain, topic);
+  console.log(chalk.green(`Literature note: ${savedPath}`));
+
+  let updatedCount = 0;
+  const outcomes = [];
+  const derivedNotes = [path.basename(savedPath, '.md')];
+  for (const { note, addition } of updates) {
+    const notePath = slugToPath(config.wikiPath, note);
+    if (!fs.existsSync(notePath)) {
+      outcomes.push(`skipped: ${note} (not found)`);
+      console.log(chalk.yellow(`  Skipped (not found): ${note}`));
+      continue;
+    }
+    try {
+      const existing = fs.readFileSync(notePath, 'utf8');
+      const humanInsight = extractHumanInsight(existing);
+      const { content: updated, preserved } = await updateNote(config, {
+        existingContent: existing,
+        addition,
+        sourceTitle,
+        sourceSlug,
+        providerName: provider
+      });
+      saveNote(config.wikiPath, { title: note, content: restoreHumanInsight(updated, humanInsight), allowOverwrite: true, slug: path.basename(notePath, '.md') });
+      updatedCount++;
+      derivedNotes.push(path.basename(notePath, '.md'));
+      outcomes.push(preserved ? `updated: ${note}` : `updated: ${note} (fallback append — rewrite dropped existing facts)`);
+      console.log(chalk.green(`  Updated: ${note}${preserved ? '' : ' (fallback append)'}`));
+    } catch (e) {
+      outcomes.push(`failed: ${note} (${e.message})`);
+      console.error(chalk.red(`  Failed: ${note} — ${e.message}`));
+    }
+  }
+
+  ledger[sourceHash] = {
+    title: sourceTitle,
+    date: new Date().toISOString().slice(0, 10),
+    file: sourceFile,
+    fileHash: hashSource(fs.readFileSync(path.join(sourcesDir, sourceFile))),
+    notes: derivedNotes
+  };
+  fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
+
+  appendLog(config.wikiPath, 'ingest', sourceTitle, outcomes);
+  console.log(chalk.green(`\nDone. 1 literature note + ${updatedCount} updated.`));
+  updateMOC(config.wikiPath);
+  updateIndex(config.wikiPath);
+  updateWikiDomains(config.wikiPath);
+
+  return {
+    skipped: false,
+    sourceTitle,
+    sourceFile,
+    literatureNotePath: savedPath,
+    literatureNoteSlug: path.basename(savedPath, '.md'),
+    literatureNoteContent: literatureWithSource,
+    updatedCount,
+    outcomes,
+    derivedNotes
+  };
+}
+
+async function saveGroundedSynthesis(question, { provider, seedNote }) {
+  const catalog = buildCatalog(config.wikiPath);
+  const candidates = selectCandidates(catalog, `${question}\n${seedNote.content}`, QUERY_NOTE_LIMIT);
+  const notesDir = path.join(config.wikiPath, 'notes');
+  const noteSlugs = [seedNote.slug, ...candidates.map(c => c.slug).filter(slug => slug !== seedNote.slug)];
+  const notes = [...new Set(noteSlugs)]
+    .filter(slug => fs.existsSync(path.join(notesDir, `${slug}.md`)))
+    .map(slug => ({ slug, content: fs.readFileSync(path.join(notesDir, `${slug}.md`), 'utf8') }));
+
+  const answer = await queryWiki(config, { question, notes, providerName: provider });
+  const sourcePath = saveSource(config.wikiPath, { title: question.slice(0, 60), question, content: answer });
+  let note = await synthesize(config, { question, answer, providerName: provider });
+  note = note.replace(/^source:.*$/m, () => `source: ${sourceWikilink(path.basename(sourcePath))}`);
+
+  const { domain, topic, title } = extractFrontmatter(note);
+  const noteTitle = title || question.slice(0, 60);
+  const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: note });
+  if (renamed) warnCollision(savedPath, noteTitle);
+  saveTaxonomy(config.wikiPath, config, domain, topic);
+  appendLog(config.wikiPath, 'synthesize', noteTitle);
+  updateMOC(config.wikiPath);
+  updateIndex(config.wikiPath);
+  updateWikiDomains(config.wikiPath);
+  return { question, answer, savedPath, slug: path.basename(savedPath, '.md') };
+}
+
+async function runLintWorkflow({ provider, fix = false }) {
+  console.log(chalk.blue(`Linting wiki... (provider: ${provider})`));
+
+  const consolidation = await consolidateDomains(config, { providerName: provider });
+  const { renamed, flagged } = renameToSchema(config.wikiPath);
+  let schemaSection = '';
+  if (renamed.length) schemaSection += `## Schema Renames\n\n${renamed.map(r => `- \`${r.from}\` → \`${r.to}\``).join('\n')}\n\n`;
+  if (flagged.length) schemaSection += `## Off-Schema (needs domain/topic)\n\n${flagged.map(s => `- [[${s}]]`).join('\n')}\n\n`;
+
+  updateMOC(config.wikiPath);
+  updateIndex(config.wikiPath);
+  updateWikiDomains(config.wikiPath);
+
+  const { filled, unmatched } = backfillSources(config.wikiPath);
+  let backfillSection = '';
+  if (filled.length) backfillSection += `## Source Backfill\n\n${filled.map(b => `- [[${b.note}]] → \`source: ${b.source}\``).join('\n')}\n\n`;
+  if (unmatched.length) backfillSection += `## Missing Source (no file in sources/ matches the title)\n\n${unmatched.map(s => `- [[${s}]]`).join('\n')}\n\n`;
+
+  let staticChecks = '';
+  const broken = checkCitations(config.wikiPath);
+  if (broken.length) {
+    staticChecks += `## Broken Source Citations\n\n${broken.map(b => b.kind === 'frontmatter'
+      ? `- [[${b.note}]] has \`source: ${b.marker}\` — no matching file in sources/`
+      : `- [[${b.note}]] cites \`^[${b.marker}]\` — no matching file in sources/`
+    ).join('\n')}\n\n`;
+  }
+  const staleSection = renderStaleSources(findStaleSources(config.wikiPath));
+  if (staleSection) staticChecks += `${staleSection}\n`;
+
+  const { report: lintReport, ops } = await lintWiki(config, { providerName: provider });
+  let report = `${backfillSection}${staticChecks}${schemaSection}${consolidation}\n${lintReport}`;
+
+  const date = new Date().toISOString().slice(0, 10);
+  let fixResults = [];
+  if (fix && ops.length) {
+    fixResults = applyLintOps(config.wikiPath, ops);
+    report += `\n\n## Applied Fixes\n\n${fixResults.map(r => `- ${r}`).join('\n')}\n`;
+    appendLog(config.wikiPath, 'lint-fix', date, fixResults);
+  } else if (ops.length) {
+    report += `\n\n## Proposed Fixes (run \`wiki lint --fix\` to apply)\n\n${ops.map(o => `- ${o.op}: ${o.from} —${o.type}→ ${o.to}`).join('\n')}\n`;
+  }
+
+  const reportPath = path.join(config.wikiPath, 'meta', `lint-${date}.md`);
+  fs.writeFileSync(reportPath, report);
+  appendLog(config.wikiPath, 'lint', date, [
+    ...filled.map(b => `source-filled: ${b.note} -> ${b.source}`),
+    ...renamed.map(r => `renamed: ${r.from} -> ${r.to}`),
+    ...flagged.map(s => `off-schema: ${s}`)
+  ]);
+  console.log(chalk.green(`Report saved: ${reportPath}`));
+  return { reportPath, report, ops, fixResults };
+}
+
+function dedupeQuestions(questions, limit) {
+  const seen = new Set();
+  const out = [];
+  for (const q of questions) {
+    const question = String(q).trim();
+    const key = question.toLowerCase().replace(/\s+/g, ' ');
+    if (!question || seen.has(key)) continue;
+    seen.add(key);
+    out.push(question);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function writeDeepIngestReport({ sourceTitle, literatureNotePath, questions, saved, failed, lintPath }) {
+  const date = new Date().toISOString().slice(0, 10);
+  const slug = sourceTitle.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'source';
+  const reportPath = path.join(config.wikiPath, 'meta', `deep-ingest-${date}-${slug}.md`);
+  const lines = [
+    `# Deep Ingest: ${sourceTitle}`,
+    '',
+    `- Date: ${date}`,
+    `- Literature note: [[${path.basename(literatureNotePath, '.md')}]]`,
+    `- Lint report: ${lintPath ? `[[${path.basename(lintPath, '.md')}]]` : 'not run'}`,
+    '',
+    '## Questions',
+    ...questions.map((q, i) => `${i + 1}. ${q}`),
+    '',
+    '## Created Notes',
+    ...(saved.length ? saved.map(s => `- [[${s.slug}]] — ${s.question}`) : ['- none']),
+    '',
+    '## Failed Questions',
+    ...(failed.length ? failed.map(f => `- ${f.question}: ${f.error}`) : ['- none'])
+  ];
+  fs.writeFileSync(reportPath, lines.join('\n') + '\n');
+  appendLog(config.wikiPath, 'deep-ingest', sourceTitle, [
+    `questions: ${questions.length}`,
+    `created: ${saved.length}`,
+    `failed: ${failed.length}`,
+    `report: ${path.basename(reportPath)}`
+  ]);
+  return reportPath;
+}
+
 // ── init ──────────────────────────────────────────────────────────────────────
 
 // Bootstrap a fresh vault (the four dirs + seeded wiki-config.json + WIKI.md) in
@@ -473,6 +726,118 @@ program
     updateMOC(config.wikiPath);
     updateIndex(config.wikiPath);
     updateWikiDomains(config.wikiPath);
+  });
+
+// ── deep-ingest ────────────────────────────────────────────────────────────────
+
+program
+  .command('deep-ingest')
+  .argument('<file...>')
+  .option('--force', 'Re-ingest a source that was already ingested')
+  .option('-q, --questions <n>', 'Number of source-grounded questions to generate', '5')
+  .option('-y, --yes', 'Run generated question loops without interactive review')
+  .option('--fix', 'Apply safe lint fixes at the final lint step')
+  .option('-p, --persona <name>', 'Apply a persona template from templates/personas/ to the ingest extraction')
+  .option('-s, --structure <name>', 'Apply a structure template from templates/structures/ as a focus-area checklist for the ingest extraction')
+  .description('Ingest a source, expand it into grounded follow-up notes, then lint the wiki')
+  .action(async (fileParts, cmdOptions) => {
+    const arg = fileParts.join(' ').trim();
+    const options = program.opts();
+    const questionCount = Math.max(1, Number.parseInt(cmdOptions.questions, 10) || 5);
+    const { personaText, structureText } = resolveTemplates(cmdOptions);
+
+    let ingestResult;
+    try {
+      ingestResult = await runIngestWorkflow(arg, {
+        provider: options.provider,
+        force: cmdOptions.force,
+        personaText,
+        structureText
+      });
+    } catch (e) {
+      console.error(chalk.red(e.message));
+      process.exit(1);
+    }
+    if (ingestResult.skipped) return;
+
+    console.log(chalk.blue(`Generating ${questionCount} grounded follow-up question(s)...`));
+    const seed = [
+      'Generate questions that are worth becoming standalone wiki synthesis notes.',
+      'Avoid duplicates of the literature note and avoid generic questions.',
+      'Prefer questions about implications, missing concepts, contradictions, applications, and assumptions.',
+      '',
+      ingestResult.literatureNoteContent
+    ].join('\n');
+    const questions = dedupeQuestions(
+      await suggestQuestions(config, { answer: seed, providerName: options.provider, count: questionCount }),
+      questionCount
+    );
+
+    if (questions.length === 0) {
+      console.log(chalk.yellow('No follow-up questions were generated; skipping ask expansion and running lint.'));
+      const lint = await runLintWorkflow({ provider: options.provider, fix: cmdOptions.fix });
+      const reportPath = writeDeepIngestReport({
+        sourceTitle: ingestResult.sourceTitle,
+        literatureNotePath: ingestResult.literatureNotePath,
+        questions,
+        saved: [],
+        failed: [],
+        lintPath: lint.reportPath
+      });
+      console.log(chalk.green(`Deep-ingest report: ${reportPath}`));
+      return;
+    }
+
+    console.log(chalk.gray('\nGenerated questions:'));
+    questions.forEach((q, i) => console.log(chalk.gray(`  ${i + 1}. ${q}`)));
+
+    if (!cmdOptions.yes) {
+      if (!process.stdin.isTTY || !process.stdout.isTTY) {
+        console.log(chalk.yellow('Review required. Re-run with --yes to execute the generated question loops non-interactively.'));
+        return;
+      }
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const proceed = (await rl.question(chalk.cyan('\nRun these question loops? [y/N] '))).trim();
+      rl.close();
+      if (!/^y/i.test(proceed)) {
+        console.log(chalk.yellow('Deep-ingest stopped after question generation.'));
+        return;
+      }
+    }
+
+    const saved = [];
+    const failed = [];
+    const seedNote = {
+      slug: ingestResult.literatureNoteSlug,
+      content: fs.readFileSync(ingestResult.literatureNotePath, 'utf8')
+    };
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
+      console.log(chalk.blue(`\nQuestion ${i + 1}/${questions.length}: ${question}`));
+      try {
+        const result = await saveGroundedSynthesis(question, { provider: options.provider, seedNote });
+        saved.push(result);
+        console.log(chalk.green(`  Saved: ${result.savedPath}`));
+      } catch (e) {
+        failed.push({ question, error: e.message });
+        console.error(chalk.red(`  Failed: ${e.message}`));
+      }
+    }
+
+    const lint = await runLintWorkflow({ provider: options.provider, fix: cmdOptions.fix });
+    const reportPath = writeDeepIngestReport({
+      sourceTitle: ingestResult.sourceTitle,
+      literatureNotePath: ingestResult.literatureNotePath,
+      questions,
+      saved,
+      failed,
+      lintPath: lint.reportPath
+    });
+    updateMOC(config.wikiPath);
+    updateIndex(config.wikiPath);
+    updateWikiDomains(config.wikiPath);
+    console.log(chalk.green(`Deep-ingest report: ${reportPath}`));
+    console.log(chalk.green(`Done. ${saved.length} question note(s), ${failed.length} failed, lint report saved.`));
   });
 
 // ── update ────────────────────────────────────────────────────────────────────

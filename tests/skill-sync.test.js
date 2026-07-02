@@ -20,29 +20,32 @@ function assertIdentical(paths) {
 }
 
 describe('skill asset sync', () => {
-  test('wiki-maintain.mjs is byte-identical across all four skills', () => {
+  test('wiki-maintain.mjs is byte-identical across all wiki skills that bundle it', () => {
     assertIdentical([
       ['skills', 'wiki-ask', 'wiki-maintain.mjs'],
       ['skills', 'wiki-rewrite', 'wiki-maintain.mjs'],
       ['skills', 'wiki-ingest', 'wiki-maintain.mjs'],
+      ['skills', 'wiki-deep-ingest', 'wiki-maintain.mjs'],
       ['skills', 'wiki-lint', 'wiki-maintain.mjs']
     ]);
   });
 
-  test('note-schema.md is byte-identical across the three generating skills', () => {
+  test('note-schema.md is byte-identical across the note-writing skills', () => {
     assertIdentical([
       ['skills', 'wiki-ask', 'note-schema.md'],
       ['skills', 'wiki-rewrite', 'note-schema.md'],
-      ['skills', 'wiki-ingest', 'note-schema.md']
+      ['skills', 'wiki-ingest', 'note-schema.md'],
+      ['skills', 'wiki-deep-ingest', 'note-schema.md']
     ]);
   });
 
-  test('WIKI.template.md is byte-identical across all four skills and the CLI', () => {
+  test('WIKI.template.md is byte-identical across all wiki skills that bundle it and the CLI', () => {
     assertIdentical([
       ['src', 'WIKI.template.md'],
       ['skills', 'wiki-ask', 'WIKI.template.md'],
       ['skills', 'wiki-rewrite', 'WIKI.template.md'],
       ['skills', 'wiki-ingest', 'WIKI.template.md'],
+      ['skills', 'wiki-deep-ingest', 'WIKI.template.md'],
       ['skills', 'wiki-lint', 'WIKI.template.md']
     ]);
   });

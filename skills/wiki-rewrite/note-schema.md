@@ -1,6 +1,7 @@
 # Wiki note schema & conventions
 
-Shared reference for the note-writing skills (`wiki-ask`, `wiki-rewrite`, `wiki-ingest`).
+Shared reference for the note-writing skills (`wiki-ask`, `wiki-rewrite`, `wiki-ingest`,
+`wiki-deep-ingest`).
 You **are** the LLM here — there is no external API. You do the generation yourself,
 then write files and run the maintenance helper.
 
@@ -37,8 +38,10 @@ Resolve in this order:
 
 **Regardless of language, keep these structural tokens EXACTLY in English** (the
 maintenance helper and Obsidian parse them by exact match):
-- Section headings: `## Source Facts`, `## Synthesis`, `## Connections`,
-  `## Speculation`, `## Open Questions`, `## Human Insight`
+- Atomic/literature section headings: `## Source Facts`, `## Synthesis`,
+  `## Connections`, `## Speculation`, `## Open Questions`, `## Human Insight`
+- Synthesis section headings: `## Question`, `## Answer`, `## Connections`,
+  `## Open Questions`, `## Human Insight`
 - Typed-link keywords: `extends::`, `contradicts::`, `requires::`, `examples::`, `related::`
 - YAML keys: `title:`, `type:`, `source:`, `domain:`, `topic:`, `tags:`, `aliases:`, `created:`, `updated:`
 
@@ -52,7 +55,7 @@ the whole note.**
 title: <specific, unique noun phrase — Title Case, 3–7 words; distinctive enough to
   stand alone in an index. Avoid generic one-word labels ("Gemini", "Attention").
   Name the precise concept ("Scaled Dot-Product Attention"). For zh the value may be Chinese.>
-type: <atomic | literature>
+type: <atomic | literature | synthesis>
 source: <a quoted wikilink to this note's source file in sources/, e.g. "[[My-Answer]]";
   KEEP the extension for non-markdown files so Obsidian can resolve them — "[[paper.pdf]]",
   NOT "[[paper]]" (which would resolve to paper.md). Empty when the note has no source file.>
@@ -68,7 +71,9 @@ updated: <YYYY-MM-DD today>
 ---
 ```
 
-## Body skeleton (use these sections, in this order)
+## Body skeletons
+
+For `type: atomic` or `type: literature`, use these sections, in this order:
 
 ```
 ## Source Facts
@@ -98,6 +103,26 @@ Unverified but interesting inferences. Clearly marked as not established.
 
 ## Open Questions
 What this note does not resolve. Gaps worth investigating.
+
+## Human Insight
+Leave this section completely empty (heading only). Reserved for the human author.
+```
+
+For `type: synthesis`, use these sections, in this order:
+
+```
+## Question
+The question this synthesis answers.
+
+## Answer
+The grounded answer. Preserve citations to source notes as `[[note]]` wikilinks.
+
+## Connections
+Typed links ONLY, usually derived from cited notes:
+  related:: [[note]]
+
+## Open Questions
+What the selected notes still do not resolve.
 
 ## Human Insight
 Leave this section completely empty (heading only). Reserved for the human author.
@@ -133,7 +158,7 @@ write your best name here and let the maintenance script normalize it.
 Run the bundled helper (next to this skill's `SKILL.md`) once at the end:
 
 ```powershell
-node "<this skill folder>\wiki-maintain.mjs" "<vaultPath>" --op <ask|rewrite|ingest> --title "<noteTitle>"
+node "<this skill folder>\wiki-maintain.mjs" "<vaultPath>" --op <ask|rewrite|ingest|deep-ingest> --title "<noteTitle>"
 ```
 
 It rebuilds `moc/*.md`, `meta/index.md`, the `wiki-config.json` taxonomy, the
