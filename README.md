@@ -529,7 +529,7 @@ The vault's `wiki-config.json` owns the live domain/topic taxonomy (the LLM grow
 
 ## Skills
 
-The `skills/` folder ships the same six operations as **native agent skills** — `wiki-ask`, `wiki-query`, `wiki-rewrite`, `wiki-ingest`, `wiki-deep-ingest`, `wiki-lint` — that run _inside_ a coding agent (Claude Code, Gemini CLI, and similar). The host agent is the generator, so **no provider or API key is needed**; the vault is the directory the agent was launched in.
+The `skills/` folder ships the same six operations as **native agent skills** — `wiki-ask`, `wiki-query`, `wiki-rewrite`, `wiki-ingest`, `wiki-deep-ingest`, `wiki-lint` — that run _inside_ a coding agent (Claude Code, Gemini CLI, and similar). The host agent is the generator, so **no provider or API key is needed**; the vault is the directory the agent was launched in. A seventh skill, `wiki-distill`, has **no CLI twin**: it distills a multi-turn conversation (the current agent session, or a file/pasted transcript) into a faithful `sources/` file ready for `/wiki-ingest`.
 
 **Quickest install — no clone needed:**
 
@@ -558,6 +558,8 @@ It targets `~/.claude/skills/` (Claude Code) and `~/.gemini/skills/` (Gemini CLI
 /wiki-deep-ingest paper.md --questions 10
 /wiki-rewrite rough-notes.md
 /wiki-lint
+/wiki-distill                       # distill the current session into a source
+/wiki-distill @session.jsonl        # or distill a saved conversation
 ```
 
 ## Requirements
