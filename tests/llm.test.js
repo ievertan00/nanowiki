@@ -4,8 +4,8 @@ import { generateNote, answerQuestion, refineAnswer, suggestQuestions, formatNot
 import { validateNote } from '../src/validator.js';
 
 const VALID_BODY = [
-  '## Source Facts', '- fact', '',
-  '## Synthesis', 'Interpretation.', '',
+  '## TL;DR', 'The lead.', '',
+  '## Explanation', 'Full explanation, preserved at density.', '',
   '## Connections', '',
   '## Speculation', '',
   '## Open Questions', '',
@@ -115,6 +115,19 @@ describe('verified generation', () => {
     assert.match(bare, /^aliases: \[\]$/m);
   });
 
+  test('description renders into the frontmatter and the note validates', async () => {
+    const withDesc = JSON.stringify({
+      frontmatter: {
+        title: 'KV Cache Reuse', type: 'atomic', source: '', domain: 'ai', topic: 'llm',
+        tags: ['kv-cache'], aliases: [], description: 'How KV cache reuse cuts inference cost.'
+      },
+      body: VALID_BODY
+    });
+    const note = await formatNote(config, { content: 'x' }, makeMock([withDesc]).MockOpenAI);
+    assert.match(note, /^description: How KV cache reuse cuts inference cost\.$/m);
+    assert.deepStrictEqual(validateNote(note), []);
+  });
+
   test('tags with spaces are kebab-cased during rendering, not left for repair', async () => {
     const spacedTags = VALID_JSON.replace('"kv-cache"', '"kv cache"');
     const { MockOpenAI, calls } = makeMock([spacedTags]);
@@ -126,14 +139,14 @@ describe('verified generation', () => {
   test('an invalid first reply triggers exactly one repair call carrying the violations', async () => {
     const invalid = JSON.stringify({
       frontmatter: { title: 'X', type: 'atomic', source: '', domain: 'ai', topic: 'llm', tags: ['a'] },
-      body: '## Source Facts\n- fact' // five sections missing
+      body: '## TL;DR\n- lead' // five sections missing
     });
     const { MockOpenAI, calls } = makeMock([invalid, VALID_JSON]);
     const note = await formatNote(config, { content: 'summary' }, MockOpenAI);
 
     assert.strictEqual(calls.length, 2);
     assert.match(calls[1].payload.messages[1].content, /VIOLATIONS:/);
-    assert.match(calls[1].payload.messages[1].content, /Missing section: ## Synthesis/);
+    assert.match(calls[1].payload.messages[1].content, /Missing section: ## Explanation/);
     assert.deepStrictEqual(validateNote(note), []);
   });
 
@@ -155,7 +168,7 @@ describe('verified generation', () => {
   test('repair preserves the original created: date through the rewrite', async () => {
     const dated = (await formatNote(config, { content: 'x' }, makeMock([VALID_JSON]).MockOpenAI))
       .replace(/^created: .*$/m, 'created: 2024-01-01');
-    const broken = dated.replace('## Synthesis', '## Wrong Section');
+    const broken = dated.replace('## Explanation', '## Wrong Section');
     const { MockOpenAI } = makeMock([VALID_JSON]); // repair reply carries no dates
     const result = await repairNote(config, { note: broken }, MockOpenAI);
     assert.match(result, /created: 2024-01-01/);

@@ -3,7 +3,12 @@
 // feeds these back in a single repair call (see repairNote in llm.js); they are
 // never shown to the model twice.
 
-const SECTIONS = ['Source Facts', 'Synthesis', 'Connections', 'Speculation', 'Open Questions', 'Human Insight'];
+// Atomic notes have no external source — the answer itself is preserved at full
+// density under ## Explanation, led by a distilled ## TL;DR.
+const ATOMIC_SECTIONS = ['TL;DR', 'Explanation', 'Connections', 'Speculation', 'Open Questions', 'Human Insight'];
+// Literature notes summarize a real source, so the fact/inference split + citation
+// markers stay; ## TL;DR is the distilled lead (it replaced the former ## Synthesis).
+const SECTIONS = ['TL;DR', 'Source Facts', 'Connections', 'Speculation', 'Open Questions', 'Human Insight'];
 // Synthesis notes (persisted `wiki query` answers) are a research-report shape, not
 // the atomic fact/inference split — the grounded answer is kept whole, so they use
 // their own section list. See getSynthesisFrontmatterPrompt / synthesize in llm.js.
@@ -100,7 +105,9 @@ export function validateNote(content) {
   }
 
   const noteType = text.match(/^type:[^\S\r\n]*(\S+)/m)?.[1];
-  const sections = noteType === 'synthesis' ? SYNTHESIS_SECTIONS : SECTIONS;
+  const sections = noteType === 'synthesis' ? SYNTHESIS_SECTIONS
+    : noteType === 'atomic' ? ATOMIC_SECTIONS
+    : SECTIONS;
 
   let lastIdx = -1;
   let outOfOrder = false;

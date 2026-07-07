@@ -151,31 +151,110 @@ On first run the vault is scaffolded automatically — directories, a default `w
 
 ### Note Structure
 
-Every note shares one schema: YAML frontmatter for organization, fixed sections for content.
+Every note shares one schema: YAML frontmatter for organization, and fixed markdown sections. The frontmatter contains a brief description of what the note establishes (for index/retrieval) and optional aliases. The body layout depends on the note's `type`:
+
+#### 1. Atomic Note (`type: atomic`)
+For self-contained ideas and LLM answers (e.g. from `wiki ask`). The body preserves the answer at full density rather than summarizing it.
 
 ```markdown
 ---
 title: 注意力机制原理与跨领域应用
-type: atomic # or literature (for source summaries)
-source: # filename/title of the source, for literature notes
+type: atomic
+source: Gemini 3.5 Flash # name of the generating model/agent
 domain: ai
 topic: attention
 tags: [attention, transformer, cross-domain]
+aliases: [Attention Mechanism, 注意力机制]
+description: 注意力机制通过动态权重计算输入特征间的关联性，是 Transformer 的核心。
 created: 2026-06-12
 updated: 2026-06-12
 ---
 
-## Source Facts ← only what sources directly state, as bullets
+## TL;DR
+A 1–3 sentence distilled gist of the whole note — the lead a reader sees first.
 
-## Synthesis ← cross-source interpretation (clearly LLM inference)
+## Explanation
+The full substance of the answer, preserved at maximum fidelity. Prose, tables, code blocks, etc.
 
-## Connections ← typed links to existing notes only
+## Connections
+Typed links only (e.g. extends:: [[Scaled-Dot-Product-Attention]]). Aim for 2–4 links.
 
-## Speculation ← unverified but interesting inferences
+## Speculation
+Unverified but interesting inferences.
 
-## Open Questions ← what this note does not resolve
+## Open Questions
+What this note does not resolve.
 
-## Human Insight ← yours alone — the LLM never touches it
+## Human Insight
+Leave this section completely empty. Reserved for the human author.
+```
+
+#### 2. Literature Note (`type: literature`)
+For summaries of external source documents (e.g. from `wiki ingest`). Keeps facts separate from interpretation and uses citation markers.
+
+```markdown
+---
+title: Transformers Are All You Need
+type: literature
+source: "[[attention-paper.pdf]]" # quoted wikilink to the source file in sources/
+domain: ai
+topic: attention
+tags: [attention, transformer, original-paper]
+aliases: [Attention Is All You Need]
+description: Transformer 架构摒弃了循环和卷积，完全基于自注意力机制实现序列转导。
+created: 2026-06-12
+updated: 2026-06-12
+---
+
+## TL;DR
+Cross-source interpretation in 1–3 sentences — what the facts add up to (LLM inference).
+
+## Source Facts
+Only what sources or established knowledge directly states, as a structured bulleted list.
+
+## Connections
+Typed links only. Up to 8 links is reasonable.
+
+## Speculation
+Unverified but interesting inferences.
+
+## Open Questions
+What this note does not resolve.
+
+## Human Insight
+Leave this section completely empty. Reserved for the human author.
+```
+
+#### 3. Synthesis Note (`type: synthesis`)
+A research-report format created from existing notes in the vault (e.g. from `wiki query --save`).
+
+```markdown
+---
+title: Attention Mechanism Comparison
+type: synthesis
+domain: ai
+topic: attention
+tags: [attention, comparison]
+aliases: []
+description: 对比不同注意力变体的计算复杂度和适用场景。
+created: 2026-06-12
+updated: 2026-06-12
+---
+
+## Question
+The question this synthesis answers.
+
+## Answer
+The grounded answer, preserving citations to source notes as [[note]] wikilinks.
+
+## Connections
+Typed links only, usually related:: [[note]].
+
+## Open Questions
+What the selected notes still do not resolve.
+
+## Human Insight
+Leave this section completely empty. Reserved for the human author.
 ```
 
 Two invariants are enforced **in code**, independent of the LLM:
@@ -203,14 +282,13 @@ wiki ask "<question>"
         → prompt for follow-up (type your own, or a number to pick a suggestion)
         → refineAnswer() returns the complete updated answer → render → loop
       N → save ONCE:
-          final refined answer to sources/<slug>.md — the note's source of record,
-          pass 2 (format, with pass-1 candidates) → Source Facts bullets stamped
-            ^[<slug>] in code, pointing at that source → note via saveNote
-            (collision guard, cleaning, dead-link capture),
+          pass 2 (format as type: atomic, with pass-1 candidates)
+            → note via saveNote (collision guard, cleaning, dead-link capture),
+            → source is set to the generating LLM model/agent
           taxonomy, log, MOC/index/WIKI regen
 ```
 
-The saved pass-1 answer is not just a backup: it is the **source** of the pass-2 note. Every `## Source Facts` bullet is stamped with a `^[<slug>]` citation marker (in code, never by the model) that resolves to that file in `sources/`, the same way `ingest` ties facts to the documents it reads — so `wiki lint`'s citation check covers ask notes too.
+The `ask` loop has no external source, so the note itself is the single artifact. It always produces an `atomic` note whose `## Explanation` section preserves the pass-1 answer at full density.
 
 The loop then continues across days: each saved note ends with `Open Questions`, which become your next `ask` — a **conversation with your own wiki** where every round deepens and links the graph. You never organize anything; domains, topics, links, MOCs, and the index all maintain themselves.
 
@@ -238,7 +316,7 @@ The CLI OCRs standalone image files locally — `tesseract.js` is pure-WASM (no 
 
 ### Why one literature note per source?
 
-`ingest` deliberately produces exactly **one** literature note per source — never a batch of new atomic notes. That note is the source's permanent anchor in the vault: every fact extracted from the document lives under its `## Source Facts`, and every existing atomic note that the source touches gets a targeted addition via fan-out. The fan-out is content-preserving by construction: if the LLM's rewrite of a touched note drops any of its pre-existing `## Source Facts`, the code (`updateNote`/`lostSourceFacts`) discards the rewrite and appends the addition as a plain new bullet instead — so a fan-out can only ever deepen a note, never lose what was already there. New concepts that don't yet have a home aren't invented as notes on the spot; dead links the LLM tried to draw are stripped and queued in `meta/wanted-notes.md`, which `wiki questions` folds into your worklist for a future `wiki ask` — a human decision, not an automatic one.
+`ingest` deliberately produces exactly **one** literature note per source — never a batch of new atomic notes. That note is the source's permanent anchor in the vault: every fact extracted from the document lives under its `## Source Facts`, and every existing atomic note that the source touches gets a targeted addition via fan-out. The fan-out is content-preserving by construction: if the LLM's rewrite of a touched literature note drops any of its pre-existing `## Source Facts`, the code (`updateNote`/`lostSourceFacts`) discards the rewrite and appends the addition as a plain new bullet instead — so a fan-out can only ever deepen a note, never lose what was already there (for atomic notes, this check no-ops as they contain no `## Source Facts`). New concepts that don't yet have a home aren't invented as notes on the spot; dead links the LLM tried to draw are stripped and queued in `meta/wanted-notes.md`, which `wiki questions` folds into your worklist for a future `wiki ask` — a human decision, not an automatic one.
 
 The alternative — minting a new atomic note for every distinct concept a source mentions — was considered and rejected. Creating a *good* atomic note requires the same care `ask` takes for a single question: candidate retrieval, domain/topic assignment, and checking for near-duplicates against the existing graph. Doing that N times per ingested document multiplies the risk of fragmentation and duplicate notes by N, with no human in the loop to catch it. One anchor note per source, plus a curated queue for promoting ideas later, keeps vault growth deliberate.
 
@@ -268,7 +346,7 @@ Templates are reusable text blocks that shape how the LLM answers — without to
 - **A persona** (`-p`/`--persona <name>`) sets the *thinking mode* — the lens through which the LLM reasons. `inversion` asks what would cause failure before suggesting a path; `research-reviewer` scrutinizes methodology and baselines; `feynman-explainer` teaches by building intuition before definition.
 - **A structure** (`-s`/`--structure <name>`) sets the *coverage checklist* — the aspects the answer should address where relevant. `five-forces` ensures competitive analysis covers all five dimensions; `technology-deepdive` prevents the LLM from skipping performance benchmarks or ecosystem context.
 
-Both inject into the **system prompt of pass 1 only**, as `PERSONA:` and `FOCUS AREAS:` blocks. They shape the free-form answer; pass 2 (the formatting call) is never touched. A richer pass-1 answer simply gives pass 2 more to work with when it fills `## Source Facts`. Omitting either flag is a byte-for-byte no-op, and naming a template that doesn't resolve to a file is an error before any LLM call.
+Both inject into the **system prompt of pass 1 only**, as `PERSONA:` and `FOCUS AREAS:` blocks. They shape the free-form answer; pass 2 (the formatting call) is never touched. A richer pass-1 answer simply gives pass 2 more to work with when it fills `## Explanation` (atomic) or `## Source Facts` (literature). Omitting either flag is a byte-for-byte no-op, and naming a template that doesn't resolve to a file is an error before any LLM call.
 
 ```powershell
 wiki ask "What is attention?" -p feynman-explainer
@@ -466,9 +544,9 @@ stages of one cycle that turns the vault's own gaps into your next prompts:
    `## Open Questions`, and may itself draw a dead link — feeding step 1 again.
 4. **`wiki update <note> "<info>"`** is the targeted alternative to a fresh `ask`: you hand
    the wiki a piece of information and the note it belongs to, and the LLM rewrites that
-   note to integrate it. `lostSourceFacts` then checks every pre-existing `## Source Facts`
-   bullet survived the rewrite — if one was dropped, the original note is kept and the new
-   information is appended as a bullet instead. Integration quality is best-effort;
+   note to integrate it. For literature notes, `lostSourceFacts` checks that every pre-existing
+   `## Source Facts` bullet survived the rewrite — if one was dropped, the original note is kept
+   and the new information is appended as a bullet instead. Integration quality is best-effort;
    **content is never lost**.
 5. **`wiki lint`** is the periodic audit over all of this: it consolidates near-duplicate
    domains and flags contradictions, orphans, thin notes, and missing links — the

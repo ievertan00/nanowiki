@@ -17,7 +17,7 @@ async function chat(config, providerName, OpenAIClient, { system, user }, { json
   return result.choices[0].message.content;
 }
 
-const FRONTMATTER_KEYS = ['title', 'type', 'source', 'domain', 'topic', 'tags', 'aliases', 'created', 'updated'];
+const FRONTMATTER_KEYS = ['title', 'type', 'source', 'domain', 'topic', 'tags', 'aliases', 'description', 'created', 'updated'];
 
 // The format pass returns {frontmatter, body} as JSON and the YAML is rendered
 // here, in code — the model never emits YAML, which eliminates the fence /

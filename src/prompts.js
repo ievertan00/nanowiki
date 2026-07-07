@@ -1,12 +1,8 @@
-const SKELETON = `## Source Facts
-Only what sources or established knowledge directly states. No interpretation here.
-Present the facts as a structured bulleted list — one discrete fact per bullet — and group related bullets under bold sub-labels (or short sub-headings) when they form natural clusters. Do not write this section as a prose paragraph.
-Include inline citations as (Source: title) where applicable.
-
-## Synthesis
-Cross-source interpretation — what the facts add up to. Clearly LLM-generated inference, not source statements.
-
-## Connections
+// Connections + the trailing sections are shared between the two body skeletons;
+// only the per-type link budget differs. Kept as one string so the atomic and
+// literature skeletons can never drift in the parts that are meant to be identical.
+function connectionsSection(linkBudget) {
+  return `## Connections
 Typed links only. Use these relationship types:
   extends:: [[note]]       — this note builds on another
   contradicts:: [[note]]   — these claims conflict
@@ -17,9 +13,10 @@ Typed links only. Use these relationship types:
 Use only the types that genuinely apply — not all types are required.
 Multiple links of the same type are fine.
 Every link should earn its place: if removing it costs nothing, drop it.
-Atomic notes: aim for 2–4 links. Literature notes: up to 8 is reasonable.
+${linkBudget}`;
+}
 
-## Speculation
+const TAIL_SECTIONS = `## Speculation
 Unverified but interesting inferences. Clearly marked as not established.
 
 ## Open Questions
@@ -27,6 +24,33 @@ What this note does not resolve. Gaps worth investigating.
 
 ## Human Insight
 Leave this section completely empty. It is reserved for the human author and must never be written to or modified by the LLM.`;
+
+// Atomic notes have no external source — the content IS the answer. The body must
+// preserve that answer at full density; ## Explanation is a lossless reshape, never
+// a summary. ## TL;DR is the one distilled part (the lead).
+const ATOMIC_SKELETON = `## TL;DR
+A 1–3 sentence distilled gist of the whole note — the lead a reader sees first.
+
+## Explanation
+The full substance of the answer, preserved at maximum fidelity. Reproduce every substantive point, example, number, table and fenced code block present in the content — do NOT summarize, abstract, condense or omit detail. Structure it for readability with sub-headings (###), bold sub-labels, bulleted lists, tables and fenced code blocks as the material warrants; use prose where prose is clearer. This section must lose no information present in the content.
+
+${connectionsSection('Aim for 2–4 links.')}
+
+${TAIL_SECTIONS}`;
+
+// Literature notes summarize a real external source, so the fact/inference split
+// and citation markers stay. ## TL;DR replaces the former ## Synthesis as the lead.
+const LITERATURE_SKELETON = `## TL;DR
+Cross-source interpretation in 1–3 sentences — what the facts add up to. Clearly LLM-generated inference, not source statements. The lead a reader sees first.
+
+## Source Facts
+Only what sources or established knowledge directly states. No interpretation here.
+Present the facts as a structured bulleted list — one discrete fact per bullet — and group related bullets under bold sub-labels (or short sub-headings) when they form natural clusters. Do not write this section as a prose paragraph.
+Include inline citations as (Source: title) where applicable.
+
+${connectionsSection('Up to 8 links is reasonable.')}
+
+${TAIL_SECTIONS}`;
 
 const LANG_NAMES = { zh: 'Simplified Chinese (简体中文)', en: 'English' };
 
@@ -46,7 +70,7 @@ function languageDirective(lang) {
   return [
     `LANGUAGE: Write all prose, explanations, and frontmatter VALUES (the title, domain, topic and tags text) in ${name}.`,
     'Keep widely-used technical terms and proper nouns in their original English form — do NOT translate them (e.g. AI, LLM, Prompt, Token, Docker, API, GPU, Transformer, product and company names).',
-    'Keep these structural tokens EXACTLY in English, untranslated: the section headings (## Source Facts, ## Synthesis, ## Connections, ## Speculation, ## Open Questions, ## Human Insight), the typed-link keywords (extends::, contradicts::, requires::, examples::, related::), and every YAML frontmatter KEY (title:, type:, source:, domain:, topic:, tags:, aliases:, created:, updated:).'
+    'Keep these structural tokens EXACTLY in English, untranslated: the section headings (## TL;DR, ## Explanation, ## Source Facts, ## Connections, ## Speculation, ## Open Questions, ## Human Insight), the typed-link keywords (extends::, contradicts::, requires::, examples::, related::), and every YAML frontmatter KEY (title:, type:, source:, domain:, topic:, tags:, aliases:, description:, created:, updated:).'
   ].join('\n');
 }
 
@@ -91,6 +115,22 @@ export function getFormatPrompt(content, domains, candidates, forcedType = null,
   const sourceInstruction = sourceTitle ? `source: ${sourceTitle}` : `source: (leave empty for atomic notes; filename or title of the source document for literature notes)`;
   const linkList = renderCandidates(candidates);
 
+  // The body skeleton is chosen by the resolved type. When the type is forced we
+  // ship exactly one skeleton; when the model must pick (rewrite with no --type)
+  // we ship both and let it commit — validator.js then checks the sections against
+  // whichever type the model emitted, so the two always agree.
+  const skeletonBlock = forcedType === 'atomic'
+    ? `SKELETON for an ATOMIC note (use these sections in this order):\n${ATOMIC_SKELETON}`
+    : forcedType === 'literature'
+      ? `SKELETON for a LITERATURE note (use these sections in this order):\n${LITERATURE_SKELETON}`
+      : `Choose the type that fits the content, then use its skeleton (sections in the given order):
+
+If type is atomic:
+${ATOMIC_SKELETON}
+
+If type is literature:
+${LITERATURE_SKELETON}`;
+
   // Everything static per vault config lives in the system message so OpenAI-
   // compatible prefix caching (DeepSeek/Qwen cache by exact prefix match) reuses
   // it across calls; per-call values (type/source, taxonomy, candidates, content)
@@ -102,9 +142,9 @@ export function getFormatPrompt(content, domains, candidates, forcedType = null,
 ${languageDirective(lang)}
 
 OUTPUT FORMAT (strict):
-Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
-{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"], "aliases": []}, "body": "## Source Facts\\n..."}
-"body" is the complete Markdown note body following the SKELETON below, starting at "## Source Facts". No YAML in the body, no code fences. The created/updated dates are managed by the system — do NOT include them.
+Return ONLY a JSON object — no prose, and do not wrap the JSON itself in a code fence — of exactly this shape:
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"], "aliases": [], "description": "..."}, "body": "## TL;DR\\n..."}
+"body" is the complete Markdown note body following the SKELETON below, starting at "## TL;DR". No YAML in the body, and do not wrap the whole note in a code fence — but fenced code blocks (\`\`\`) WITHIN a section are expected and required wherever the content contains code, tables or commands; preserve them verbatim. The created/updated dates are managed by the system — do NOT include them.
 
 FRONTMATTER VALUES:
 - title: a specific, unique noun phrase that captures the note's single core idea. It must be distinctive enough to stand alone in an index and not collide with adjacent notes. Avoid generic or one-word labels (e.g. "Gemini", "Attention", "Caching"); name the precise concept instead (e.g. "Google Gemini Multimodal Model Family", "Scaled Dot-Product Attention", "Anthropic Prompt Caching"). Use Title Case, no trailing punctuation, and prefer 3–7 words.
@@ -112,14 +152,14 @@ FRONTMATTER VALUES:
 - domain and topic: from the TAXONOMY in the user message
 - tags: JSON array of 3–6 tags. Each tag MUST be a single token with NO spaces (Obsidian rejects spaces in tags). Join multi-word concepts with hyphens in kebab-case and keep technical terms recognizable, e.g. ["prompt-caching", "kv-cache", "llm-inference"].
 - aliases: JSON array of 0–3 alternative names other notes might use to link to this one — the title's counterpart in the other language (the English name for a Chinese title, or vice versa) and a widely-used abbreviation or acronym, when they exist. Aliases may contain spaces. Use [] when none apply.
+- description: a single plain-text sentence summarizing what this note establishes, for indexes and retrieval. No markdown, no links.
 
 LINKS (strict):
 - In the Connections section, ONLY link to notes from the EXISTING NOTES list in the user message, copying the [[name]] exactly as listed
 - If the list is "none" or a note is not in it, do NOT create any [[links]] — leave Connections empty
 - Creating links to notes that do not exist is forbidden
 
-SKELETON (use these sections in this order):
-${SKELETON}`,
+${skeletonBlock}`,
     user: `Format the following content into an Obsidian wiki note.
 
 FRONTMATTER FOR THIS NOTE:
@@ -152,12 +192,13 @@ export function getSynthesisFrontmatterPrompt(question, answer, domains, lang = 
 ${languageDirective(lang)}
 
 Return ONLY a JSON object of exactly this shape:
-{"title": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"], "aliases": []}
+{"title": "...", "domain": "...", "topic": "...", "tags": ["tag-1", "tag-2"], "aliases": [], "description": "..."}
 
 - title: a specific noun phrase naming what this synthesis establishes (Title Case, 3–7 words, no trailing punctuation). It must be distinctive enough to stand alone in an index.
 - domain and topic: from the TAXONOMY in the user message.
 - tags: JSON array of 3–6 tags, each a single token with NO spaces (kebab-case for multi-word concepts).
-- aliases: JSON array of 0–3 alternative names other notes might use to link here; [] when none apply.`,
+- aliases: JSON array of 0–3 alternative names other notes might use to link here; [] when none apply.
+- description: a single plain-text sentence summarizing what this synthesis establishes, for indexes and retrieval. No markdown, no links.`,
     user: `Assign frontmatter for this synthesis.
 
 TAXONOMY:
@@ -256,15 +297,15 @@ ${sourceContent}`
 
 export function getNoteUpdatePrompt(existingContent, addition, sourceTitle, lang = 'zh') {
   return {
-    system: 'You are updating a wiki note with new information from a source. Integrate the new information naturally into the most appropriate section (Source Facts, Synthesis, or Connections). Never modify or add content to the ## Human Insight section. Respond only with valid JSON.',
+    system: 'You are updating a wiki note with new information from a source. Integrate the new information naturally into the most appropriate existing section of the note. Never modify or add content to the ## Human Insight section. Respond only with valid JSON.',
     user: `Update the following wiki note by integrating new information from "${sourceTitle}".
 
 ${languageDirective(lang)}
 
 OUTPUT FORMAT (strict):
 Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
-{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"], "aliases": []}, "body": "## Source Facts\\n..."}
-"body" is the complete updated Markdown note body, starting at "## Source Facts". No YAML in the body, no code fences.
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"], "aliases": [], "description": "..."}, "body": "## TL;DR\\n..."}
+"body" is the complete updated Markdown note body, starting at "## TL;DR". Keep every section the note already has. No YAML in the body; do not wrap the whole note in a code fence (fenced code blocks within a section are fine).
 Copy every frontmatter value from the existing note unchanged. The created/updated dates are managed by the system — do NOT include them.
 
 PRESERVATION (strict):
@@ -293,7 +334,7 @@ VIOLATIONS:
 ${errors.map(e => `- ${e}`).join('\n')}
 
 Return ONLY a JSON object — no prose, no code fences — of exactly this shape:
-{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"], "aliases": []}, "body": "## Source Facts\\n..."}
+{"frontmatter": {"title": "...", "type": "...", "source": "...", "domain": "...", "topic": "...", "tags": ["tag-1"], "aliases": [], "description": "..."}, "body": "## TL;DR\\n..."}
 The created/updated dates are managed by the system — do NOT include them.
 
 NOTE:

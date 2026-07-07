@@ -19,29 +19,22 @@ You source and ask questions. The LLM writes and maintains.
 
 ## Note Structure
 
-Every note follows this skeleton, in order:
+Every note leads with a distilled `## TL;DR`, then its substance. There are two body
+shapes.
+
+**Atomic notes** (an answer/idea note with no external source — from `ask`) preserve
+the answer at full density under `## Explanation`:
 
 ```markdown
-## Source Facts
-Only what sources or established knowledge directly states.
-Inline citations as (Source: title) where applicable. No interpretation.
+## TL;DR
+A 1–3 sentence distilled gist of the note — the lead a reader sees first.
 
-## Synthesis
-Cross-source interpretation. What the facts add up to.
-Clearly LLM-generated inference, not source statements.
+## Explanation
+The full answer, preserved at density: prose, examples, numbers, tables and code
+blocks. Not a summary.
 
 ## Connections
-Typed links only:
-  extends:: [[note]]       — this note builds on another
-  contradicts:: [[note]]   — these claims conflict
-  requires:: [[note]]      — this concept depends on another
-  examples:: [[note]]      — concrete instances of this concept
-  related:: [[note]]       — loose association
-
-Use only the types that genuinely apply — not all types are required.
-Multiple links of the same type are fine.
-Every link should earn its place: if removing it costs nothing, drop it.
-Atomic notes: aim for 2–4 links. Literature notes: up to 8 is reasonable.
+Typed links only (see relationship types below).
 
 ## Speculation
 Unverified but interesting inferences. Clearly marked as not established.
@@ -52,6 +45,32 @@ What this note does not resolve. Gaps worth investigating.
 ## Human Insight
 [Reserved for the human author. Never written to or modified by the LLM.]
 ```
+
+**Literature notes** (tied to a real source — from `ingest`) replace `## Explanation`
+with `## Source Facts`:
+
+```markdown
+## TL;DR
+Cross-source interpretation in 1–3 sentences — what the facts add up to.
+
+## Source Facts
+Only what sources or established knowledge directly states. Inline citations as
+(Source: title), and `^[source]` citation markers. No interpretation.
+
+## Connections / ## Speculation / ## Open Questions / ## Human Insight
+(same as atomic)
+```
+
+Typed-link relationship types (used in `## Connections`):
+```
+  extends:: [[note]]       — this note builds on another
+  contradicts:: [[note]]   — these claims conflict
+  requires:: [[note]]      — this concept depends on another
+  examples:: [[note]]      — concrete instances of this concept
+  related:: [[note]]       — loose association
+```
+Use only the types that genuinely apply — not all are required. Every link should earn
+its place. Atomic notes: aim for 2–4 links. Literature notes: up to 8 is reasonable.
 
 ---
 
@@ -67,6 +86,7 @@ source: filename or title of the source document (literature notes only; empty f
 domain: top-level domain (e.g. ai, engineering, language)
 topic: sub-field within domain (e.g. llm, databases, grammar)
 tags: [keyword-1, keyword-2, keyword-3]
+description: a single plain-text sentence summarizing the note, for indexes
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
 ---
@@ -89,9 +109,9 @@ The output language is set by `language` in `wiki-config.json` (`zh` for Simplif
 - **Prose and frontmatter values** (title, domain, topic, tags) are written in the configured language.
 - **Technical terms and proper nouns stay in their original English form** — never translate them (AI, LLM, Prompt, Token, Docker, API, GPU, Transformer, product and company names, …).
 - **Structural tokens stay in English, always**, regardless of language. These are parsed by exact match when MOCs and the index are regenerated, so localizing them would break the wiki:
-  - Section headings: `## Source Facts`, `## Synthesis`, `## Connections`, `## Speculation`, `## Open Questions`, `## Human Insight`
+  - Section headings: `## TL;DR`, `## Explanation`, `## Source Facts`, `## Connections`, `## Speculation`, `## Open Questions`, `## Human Insight`
   - Typed-link keywords: `extends::`, `contradicts::`, `requires::`, `examples::`, `related::`
-  - YAML frontmatter keys: `title:`, `type:`, `source:`, `domain:`, `topic:`, `tags:`, `created:`, `updated:`
+  - YAML frontmatter keys: `title:`, `type:`, `source:`, `domain:`, `topic:`, `tags:`, `description:`, `created:`, `updated:`
 
 ---
 

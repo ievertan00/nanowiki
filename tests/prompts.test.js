@@ -69,12 +69,27 @@ describe('getFormatPrompt', () => {
 
   test('static blocks (skeleton, link rule, language) live in the system message for prefix caching', () => {
     const { system, user } = getFormatPrompt('content', {}, [], null, null, 'zh');
-    for (const section of ['## Source Facts', '## Synthesis', '## Connections', '## Speculation', '## Open Questions', '## Human Insight']) {
+    // Unforced: both skeletons are shown; ## Synthesis no longer exists.
+    for (const section of ['## TL;DR', '## Explanation', '## Source Facts', '## Connections', '## Speculation', '## Open Questions', '## Human Insight']) {
       assert.ok(system.includes(section), `missing ${section}`);
     }
+    assert.ok(!system.includes('## Synthesis'), 'Synthesis section should be gone');
     assert.match(system, /ONLY link to notes from the EXISTING NOTES list/);
     assert.match(system, /Keep these structural tokens EXACTLY in English/);
     assert.doesNotMatch(user, /## Speculation/); // skeleton not duplicated into the per-call message
+  });
+
+  test('atomic vs literature skeleton is selected by forcedType', () => {
+    // Discriminate on skeleton BODY text (headings appear in the shared token list regardless).
+    const atomic = getFormatPrompt('content', {}, [], 'atomic', null, 'zh').system;
+    assert.match(atomic, /SKELETON for an ATOMIC note/);
+    assert.match(atomic, /preserved at maximum fidelity/); // ## Explanation instruction
+    assert.doesNotMatch(atomic, /Only what sources or established knowledge directly states/);
+
+    const lit = getFormatPrompt('content', {}, [], 'literature', null, 'zh').system;
+    assert.match(lit, /SKELETON for a LITERATURE note/);
+    assert.match(lit, /Only what sources or established knowledge directly states/); // ## Source Facts
+    assert.doesNotMatch(lit, /preserved at maximum fidelity/);
   });
 
   test('dates are never requested from the model', () => {
@@ -91,11 +106,13 @@ describe('getFormatPrompt', () => {
     assert.match(user, /ai: llm/);
   });
 
-  test('aliases are requested in the JSON shape and protected as a structural token', () => {
+  test('aliases and description are requested in the JSON shape and protected as structural tokens', () => {
     const { system } = getFormatPrompt('content', {}, [], null, null, 'zh');
     assert.match(system, /"aliases": \[\]/);
+    assert.match(system, /"description": "\.\.\."/);
     assert.match(system, /- aliases: JSON array of 0–3 alternative names/);
-    assert.match(system, /tags:, aliases:, created:/); // stays an English YAML key under zh
+    assert.match(system, /- description: a single plain-text sentence/);
+    assert.match(system, /tags:, aliases:, description:, created:/); // stays an English YAML key under zh
   });
 });
 

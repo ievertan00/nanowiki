@@ -38,12 +38,14 @@ Resolve in this order:
 
 **Regardless of language, keep these structural tokens EXACTLY in English** (the
 maintenance helper and Obsidian parse them by exact match):
-- Atomic/literature section headings: `## Source Facts`, `## Synthesis`,
-  `## Connections`, `## Speculation`, `## Open Questions`, `## Human Insight`
+- Atomic section headings: `## TL;DR`, `## Explanation`, `## Connections`,
+  `## Speculation`, `## Open Questions`, `## Human Insight`
+- Literature section headings: `## TL;DR`, `## Source Facts`, `## Connections`,
+  `## Speculation`, `## Open Questions`, `## Human Insight`
 - Synthesis section headings: `## Question`, `## Answer`, `## Connections`,
   `## Open Questions`, `## Human Insight`
 - Typed-link keywords: `extends::`, `contradicts::`, `requires::`, `examples::`, `related::`
-- YAML keys: `title:`, `type:`, `source:`, `domain:`, `topic:`, `tags:`, `aliases:`, `created:`, `updated:`
+- YAML keys: `title:`, `type:`, `source:`, `domain:`, `topic:`, `tags:`, `aliases:`, `description:`, `created:`, `updated:`
 
 ## Frontmatter
 
@@ -56,9 +58,11 @@ title: <specific, unique noun phrase — Title Case, 3–7 words; distinctive en
   stand alone in an index. Avoid generic one-word labels ("Gemini", "Attention").
   Name the precise concept ("Scaled Dot-Product Attention"). For zh the value may be Chinese.>
 type: <atomic | literature | synthesis>
-source: <a quoted wikilink to this note's source file in sources/, e.g. "[[My-Answer]]";
-  KEEP the extension for non-markdown files so Obsidian can resolve them — "[[paper.pdf]]",
-  NOT "[[paper]]" (which would resolve to paper.md). Empty when the note has no source file.>
+source: <for a literature note, a quoted wikilink to its source file in sources/, e.g.
+  "[[paper.pdf]]" — KEEP the extension for non-markdown files (Obsidian resolves "[[paper]]"
+  to paper.md). For an atomic note generated from the model's own knowledge (e.g. wiki-ask),
+  name the generating agent — set your own product name (Claude, Codex, Gemini, …).
+  Empty only when neither applies.>
 domain: <closest match from the taxonomy, or a new concise domain>
 topic: <closest match from the taxonomy, or a new concise topic>
 tags: [tag-a, tag-b, tag-c]   # 3–6 tags, each a SINGLE token with NO spaces,
@@ -66,6 +70,8 @@ tags: [tag-a, tag-b, tag-c]   # 3–6 tags, each a SINGLE token with NO spaces,
 aliases: [<0–3 alternative names other notes might link by — the title's counterpart
   in the other language (English name for a Chinese title, or vice versa) and a
   widely-used abbreviation, when they exist; spaces allowed; [] when none>]
+description: <a single plain-text sentence summarizing what this note establishes,
+  for indexes and retrieval — no markdown, no links. For zh the value may be Chinese.>
 created: <YYYY-MM-DD today>
 updated: <YYYY-MM-DD today>
 ---
@@ -73,19 +79,19 @@ updated: <YYYY-MM-DD today>
 
 ## Body skeletons
 
-For `type: atomic` or `type: literature`, use these sections, in this order:
+For `type: atomic` (an answer/idea note with **no external source** — e.g. `wiki-ask`),
+use these sections, in this order. The answer IS the note, so preserve it at full density:
 
 ```
-## Source Facts
-Only what sources or established knowledge directly states. No interpretation here.
-Present as a structured bulleted list — one discrete fact per bullet — and group
-related bullets under bold sub-labels or short sub-headings when they cluster
-naturally. Not a prose paragraph. Include inline citations as (Source: title) where
-applicable.
+## TL;DR
+A 1–3 sentence distilled gist of the whole note — the lead a reader sees first.
 
-## Synthesis
-Cross-source interpretation — what the facts add up to. Clearly LLM-generated
-inference, not source statements.
+## Explanation
+The full substance of the answer, preserved at maximum fidelity. Reproduce every
+substantive point, example, number, table and fenced code block from your answer —
+do NOT summarize, abstract, condense or omit detail. Structure it for readability with
+sub-headings (###), bold sub-labels, bulleted lists, tables and fenced code blocks as
+the material warrants; use prose where prose is clearer. This section must lose nothing.
 
 ## Connections
 Typed links ONLY. Relationship types:
@@ -95,8 +101,36 @@ Typed links ONLY. Relationship types:
   examples:: [[note]]      — concrete instances of this concept
   related:: [[note]]       — loose association
 Use only the types that genuinely apply. Multiple links of one type are fine.
-Every link must earn its place. Atomic notes: aim for 2–4 links. Literature notes:
-up to 8 is reasonable.
+Every link must earn its place. Aim for 2–4 links.
+
+## Speculation
+Unverified but interesting inferences. Clearly marked as not established.
+
+## Open Questions
+What this note does not resolve. Gaps worth investigating.
+
+## Human Insight
+Leave this section completely empty (heading only). Reserved for the human author.
+```
+
+For `type: literature` (a note summarizing a **real external source** — e.g. `wiki-ingest`),
+use these sections, in this order:
+
+```
+## TL;DR
+Cross-source interpretation in 1–3 sentences — what the facts add up to. Clearly
+LLM-generated inference, not source statements. The lead a reader sees first.
+
+## Source Facts
+Only what sources or established knowledge directly states. No interpretation here.
+Present as a structured bulleted list — one discrete fact per bullet — and group
+related bullets under bold sub-labels or short sub-headings when they cluster
+naturally. Not a prose paragraph. Include inline citations as (Source: title) where
+applicable.
+
+## Connections
+Typed links ONLY (same relationship types as the atomic skeleton above).
+Every link must earn its place. Up to 8 links is reasonable.
 
 ## Speculation
 Unverified but interesting inferences. Clearly marked as not established.
@@ -147,10 +181,11 @@ write your best name here and let the maintenance script normalize it.
   exist** in `notes/` — matched by filename **or** by a name in a note's `aliases:`.
   If none genuinely apply, leave Connections empty. Never invent a link to a note
   that does not exist.
-- **Citation markers are preserved verbatim.** A Source Facts bullet may end with a
-  `^[<source-name>]` marker tying the fact to a file in `sources/`. When rewriting or
-  updating a note, copy every existing marker unchanged with its bullet. When ingesting,
-  append ` ^[<source-file-basename>]` to each bullet you add to Source Facts.
+- **Citation markers are preserved verbatim (literature/source-bound notes only).** In a
+  literature note a Source Facts bullet may end with a `^[<source-name>]` marker tying the
+  fact to a file in `sources/`. When rewriting or updating such a note, copy every existing
+  marker unchanged with its bullet. When ingesting, append ` ^[<source-file-basename>]` to
+  each bullet you add to Source Facts. Atomic notes have no external source and carry no markers.
 - **No code fences** around the note or its frontmatter. Output clean Markdown only.
 
 ## After writing — regenerate derived files

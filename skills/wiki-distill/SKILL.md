@@ -13,6 +13,7 @@ distillation; there is no external API.
 **This is restructuring, not summarization** — the opposite of a TL;DR. The promise is
 **best-effort fidelity + an explicit discard log**, never "zero loss". Remove only three
 things:
+
 1. Conversation shell — greetings, process chatter, "let me…" narration.
 2. Cross-turn duplicates — a claim stated repeatedly is kept once.
 3. Superseded old versions — content a later turn overturned.
@@ -22,8 +23,7 @@ examples, boundary conditions, qualifiers. Anything removed under (3) is **not d
 — it is folded into a visible `## 已废弃 / Superseded` section at the end.
 
 **It writes a source, not a note.** Never touch `notes/`. Run no maintenance helper,
-regenerate no MOC/index/taxonomy/log, update no taxonomy. Producing the source file is
-the whole job — after writing it, stop and print the next command.
+regenerate no MOC/index/taxonomy/log, update no taxonomy. Producing the source file is the whole job — after writing it, stop and print the next command.
 
 ## Resolving the vault & language
 
@@ -41,6 +41,7 @@ tokens here, and do **not** give the file any note-schema `type` or section name
 
 Strip `--lang`, `--org reorganize|preserve`, and `--vault` from the argument. What
 remains is the **input**:
+
 - **Empty** → distill the **current session**.
 - **Non-empty** → strip a leading `@` and surrounding quotes, then:
   - if it resolves to an existing file (a literal path relative to cwd or absolute; for a
@@ -106,6 +107,7 @@ tags: [kebab-token, another-token]
 ```
 
 Body:
+
 - One line at the very top stating the organization strategy chosen (`reorganize` or
   `preserve`) and, for a current-session distill that was auto-compacted, a one-line
   fidelity caveat.

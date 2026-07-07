@@ -36,7 +36,7 @@ describe('buildCatalog', () => {
     fs.rmSync(vault, { recursive: true, force: true });
   });
 
-  test('extracts frontmatter fields and the first Synthesis line', () => {
+  test('extracts frontmatter fields and prefers the description as summary', () => {
     fs.writeFileSync(path.join(vault, 'notes', 'kv-cache.md'), [
       '---',
       'title: KV Cache Reuse',
@@ -44,15 +44,14 @@ describe('buildCatalog', () => {
       'topic: llm-inference',
       'tags: [kv-cache, inference]',
       'aliases: [键值缓存复用]',
+      'description: Caching attention keys avoids recomputation.',
       '---',
       '',
-      '## Source Facts',
-      '- a fact',
+      '## TL;DR',
+      'A shorter lead line.',
       '',
-      '## Synthesis',
-      '',
-      'Caching attention keys avoids recomputation.',
-      'Second line ignored.'
+      '## Explanation',
+      '- a fact'
     ].join('\n'));
 
     const catalog = buildCatalog(vault);
@@ -66,6 +65,23 @@ describe('buildCatalog', () => {
       aliases: '键值缓存复用',
       summary: 'Caching attention keys avoids recomputation.'
     });
+  });
+
+  test('falls back to the first ## TL;DR line when there is no description', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'kv-cache.md'), [
+      '---',
+      'title: KV Cache Reuse',
+      'domain: ai',
+      'topic: llm-inference',
+      '---',
+      '',
+      '## TL;DR',
+      '',
+      'Caching attention keys avoids recomputation.',
+      'Second line ignored.'
+    ].join('\n'));
+
+    assert.strictEqual(buildCatalog(vault)[0].summary, 'Caching attention keys avoids recomputation.');
   });
 
   test('falls back to slug as title and empty summary when Synthesis is empty', () => {

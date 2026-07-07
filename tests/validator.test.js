@@ -9,15 +9,16 @@ source:
 domain: ai
 topic: llm-inference
 tags: [kv-cache, inference]
+description: How KV cache reuse cuts inference cost.
 created: 2026-06-11
 updated: 2026-06-11
 ---
 
-## Source Facts
-- a fact
+## TL;DR
+Reusing the KV cache cuts prefill cost.
 
-## Synthesis
-Interpretation.
+## Explanation
+The full explanation, preserved at density.
 
 ## Connections
 extends:: [[attention]]
@@ -60,8 +61,8 @@ describe('validateNote', () => {
 
   test('flags out-of-order sections', () => {
     const reordered = VALID
-      .replace('## Synthesis\nInterpretation.\n\n', '')
-      .replace('## Open Questions', '## Synthesis\nInterpretation.\n\n## Open Questions');
+      .replace('## TL;DR\nReusing the KV cache cuts prefill cost.\n\n', '')
+      .replace('## Open Questions', '## TL;DR\nReusing the KV cache cuts prefill cost.\n\n## Open Questions');
     const errors = validateNote(reordered);
     assert.ok(errors.some(e => e.includes('out of order')));
   });
@@ -118,10 +119,10 @@ describe('validateNote — synthesis type', () => {
   });
 
   test('a synthesis note is validated against the synthesis sections, not the atomic ones', () => {
-    // It has no ## Source Facts / ## Synthesis / ## Speculation — that must NOT flag.
+    // It has no ## TL;DR / ## Explanation / ## Speculation — that must NOT flag.
     const errors = validateNote(VALID_SYNTHESIS);
-    assert.ok(!errors.some(e => e.includes('Missing section: ## Source Facts')));
-    assert.ok(!errors.some(e => e.includes('Missing section: ## Synthesis')));
+    assert.ok(!errors.some(e => e.includes('Missing section: ## Explanation')));
+    assert.ok(!errors.some(e => e.includes('Missing section: ## Speculation')));
   });
 
   test('flags a missing synthesis section', () => {
@@ -132,6 +133,15 @@ describe('validateNote — synthesis type', () => {
   test('an atomic note still requires the six atomic sections', () => {
     const errors = validateNote(VALID.replace('## Speculation\nMaybe.\n', ''));
     assert.ok(errors.some(e => e === 'Missing section: ## Speculation'));
+  });
+
+  test('an atomic note using the old Source Facts/Synthesis shape is flagged as legacy', () => {
+    const legacy = VALID
+      .replace('## TL;DR\nReusing the KV cache cuts prefill cost.', '## Source Facts\n- a fact')
+      .replace('## Explanation\nThe full explanation, preserved at density.', '## Synthesis\nInterpretation.');
+    const errors = validateNote(legacy);
+    assert.ok(errors.some(e => e === 'Missing section: ## TL;DR'));
+    assert.ok(errors.some(e => e === 'Missing section: ## Explanation'));
   });
 });
 

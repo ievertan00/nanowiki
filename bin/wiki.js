@@ -12,7 +12,6 @@ import { ingestSource, updateNote } from '../src/ingest.js';
 import { lintWiki, consolidateDomains, applyLintOps, checkCitations, renameToSchema, backfillSources } from '../src/lint.js';
 import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight, sourceWikilink } from '../src/note.js';
 import { loadPersona, loadStructure } from '../src/templates.js';
-import { syncSourceMarkers } from '../src/validator.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
 import pdfParse from 'pdf-parse';
 import { isImageFile, ocrImage } from '../src/ocr.js';
@@ -414,30 +413,27 @@ program
 
     console.log(chalk.blue('Formatting note...'));
     const candidates = selectCandidates(buildCatalog(config.wikiPath), `${question}\n${answer}`);
+    // ask has no external source — the answer IS the note. It always produces an
+    // atomic note whose ## Explanation preserves the pass-1 answer at full density
+    // (--type is a no-op here). No sources/ file, no ^[citation] markers: the note
+    // is the single artifact, so nothing is duplicated or lost.
     const note = await formatNote(config, {
       content: answer,
       candidates,
-      forcedType: cmdOptions.type || null,
+      forcedType: 'atomic',
       providerName: options.provider
     });
 
-    const { domain, topic, title } = extractFrontmatter(note);
+    // The note's source of record is the model that generated it — set in code
+    // (like dates), naming the resolved provider's model regardless of what the
+    // format pass emitted. Falls back to a generic label if no model is configured.
+    const providerCfg = config.providers[options.provider] || config.providers.default || Object.values(config.providers)[0];
+    const generator = providerCfg?.model || 'LLM';
+    const sourcedNote = note.replace(/^source:.*$/m, `source: ${generator}`);
+    const { domain, topic, title } = extractFrontmatter(sourcedNote);
     const noteTitle = title || question.slice(0, 60);
 
-    // The final refined answer is the unformatted counterpart of the note — pin
-    // it (not the pre-refinement original) in sources/ before the note is saved:
-    // it is the source the note's ^[citation] markers point at, so nothing the
-    // format pass drops is lost and every Source Facts bullet stays traceable.
-    const sourcePath = saveSource(config.wikiPath, { title: noteTitle, question, content: answer });
-    const sourceSlug = path.basename(sourcePath, '.md');
-
-    // Citation markers are code's job (see syncSourceMarkers): every Source
-    // Facts bullet of a fresh ask note is backed by the pass-1 answer above.
-    // source: in the frontmatter is set in code (same as query --save) so the
-    // link from the note to its pass-1 source file is always present — written as a
-    // quoted wikilink so Obsidian renders it as a clickable link to sources/.
-    const linkedNote = note.replace(/^source:.*$/m, () => `source: ${sourceWikilink(path.basename(sourcePath))}`);
-    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: syncSourceMarkers('', linkedNote, sourceSlug) });
+    const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: sourcedNote });
     if (renamed) warnCollision(savedPath, noteTitle);
     saveTaxonomy(config.wikiPath, config, domain, topic);
     appendLog(config.wikiPath, 'ask', noteTitle);

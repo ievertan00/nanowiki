@@ -21,10 +21,11 @@ export function tokenize(s) {
   return out;
 }
 
-// First non-empty line of ## Synthesis — the note's one-line description.
-function synthesisSummary(content) {
+// First non-empty line of ## TL;DR — the fallback one-line summary when a note has
+// no `description:` frontmatter (older notes, or a model that omitted it).
+function tldrSummary(content) {
   const lines = content.split(/\r?\n/);
-  const start = lines.findIndex(l => /^## Synthesis\s*$/.test(l));
+  const start = lines.findIndex(l => /^## TL;DR\s*$/.test(l));
   if (start === -1) return '';
   for (let i = start + 1; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -50,7 +51,7 @@ export function buildCatalog(wikiPath) {
         topic: fm.topic || '',
         tags: (fm.tags || '').replace(/[\[\]]/g, '').trim(),
         aliases: (fm.aliases || '').replace(/[\[\]]/g, '').trim(),
-        summary: synthesisSummary(content)
+        summary: (fm.description || '').trim() || tldrSummary(content)
       };
     });
 }

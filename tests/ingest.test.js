@@ -4,8 +4,8 @@ import { updateNote, ingestSource, chunkText } from '../src/ingest.js';
 
 const EXISTING = `---
 title: KV Cache Reuse
-type: atomic
-source:
+type: literature
+source: KV-Cache-Paper
 domain: ai
 topic: llm
 tags: [kv-cache]
@@ -13,12 +13,12 @@ created: 2024-01-01
 updated: 2024-05-01
 ---
 
+## TL;DR
+Interpretation.
+
 ## Source Facts
 - original fact one
 - original fact two
-
-## Synthesis
-Interpretation.
 
 ## Connections
 
@@ -31,10 +31,10 @@ Interpretation.
 
 // A valid rewrite that keeps both existing bullets and adds a new one.
 const GOOD_REPLY = JSON.stringify({
-  frontmatter: { title: 'KV Cache Reuse', type: 'atomic', source: '', domain: 'ai', topic: 'llm', tags: ['kv-cache'] },
+  frontmatter: { title: 'KV Cache Reuse', type: 'literature', source: 'KV-Cache-Paper', domain: 'ai', topic: 'llm', tags: ['kv-cache'] },
   body: [
+    '## TL;DR', 'Interpretation.', '',
     '## Source Facts', '- original fact one', '- original fact two', '- new fact (Source: Paper)', '',
-    '## Synthesis', 'Interpretation.', '',
     '## Connections', '',
     '## Speculation', '',
     '## Open Questions', '',
@@ -149,8 +149,8 @@ describe('chunkText', () => {
 const FORMAT_JSON = JSON.stringify({
   frontmatter: { title: 'Long Paper', type: 'literature', source: 'Long Paper', domain: 'ai', topic: 'llm', tags: ['llm'] },
   body: [
+    '## TL;DR', 'Interpretation.', '',
     '## Source Facts', '- fact', '',
-    '## Synthesis', 'Interpretation.', '',
     '## Connections', '',
     '## Speculation', '',
     '## Open Questions', '',

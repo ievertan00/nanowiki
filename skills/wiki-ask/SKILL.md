@@ -40,7 +40,8 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
 3. **Pass 1 — Answer.** Answer the question accurately and thoroughly, as if explaining
    to a knowledgeable colleague. No schema, no frontmatter — just the best free-form
    answer, in the resolved language (technical terms stay English). Keep this raw text;
-   the **final** version (after the refine loop in step 4) becomes the source record.
+   the **final** version (after the refine loop in step 4) is what pass 2 preserves at
+   full density in the note's `## Explanation` — so make it as rich as you can.
 
    - If a **persona** template was loaded, let its text shape the voice/framing of
      this answer.
@@ -70,47 +71,32 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
    pass 1. Only the **final** answer — after the last round — is formatted and saved;
    intermediate rounds are never written to disk.
 
-5. **Pass 2 — Format.** Reshape the **final** answer into the note schema from
-   `note-schema.md`:
+5. **Pass 2 — Format.** Reshape the **final** answer into the **atomic** note schema
+   from `note-schema.md` (TL;DR / Explanation / Connections / Speculation / Open
+   Questions / Human Insight):
+   - `type: atomic`. `ask` has **no external source** — you (the generating agent) are the
+     source of record, so set `source:` to your own product name (e.g. `Claude`, `Codex`,
+     `Gemini`), and do **not** write any `^[...]` citation markers (those belong to
+     source-bound literature notes only). `--type` is ignored: an ask answer is always atomic.
+   - Preserve the answer at **full density** in `## Explanation` — reproduce every point,
+     example, number, table and fenced code block; do **not** summarize. `## TL;DR` is the
+     one distilled part (1–3 sentences).
+   - Write a one-sentence `description:` in the frontmatter (plain text, no links).
    - Assign `domain`/`topic` against the existing taxonomy (closest match, or a new
      concise one if nothing fits).
-   - `type`: use `--type` if given, else `atomic`.
    - In `## Connections`, link **only** to notes from the existing-notes list. If none
      apply, leave it empty.
    - Add no information beyond what is in the final answer.
-   - Set `source: "[[<sourceSlug>]]"` — a quoted wikilink to the final answer that step 7
-     saves at `sources/<sourceSlug>.md`, so the note's source renders as a clickable link.
-     `<sourceSlug>` is the **title alone**, slugified — **NOT** the note's
-     `<domain>-<topic>-<title>` filename. It MUST differ from the note's own filename:
-     a source file that shares the note's basename makes `[[...]]` ambiguous, and Obsidian
-     resolves it back to the note instead of the source. No extension — the source is `.md`.
-   - End every `## Source Facts` bullet with the citation marker ` ^[<sourceSlug>]` (the
-     same title slug): the final answer is the source of this note, saved at
-     `sources/<sourceSlug>.md` in step 7 — the file those markers resolve to.
 
 6. **Write the note.** Derive `title`/`domain`/`topic` from the frontmatter you just
    wrote (fall back to the question, truncated, if no title). Compute the note slug
    `<noteSlug>` = `<domain>-<topic>-<title>` (the slug rule in `note-schema.md`) and write
-   `notes/<noteSlug>.md`.
+   `notes/<noteSlug>.md`. This note is the **single artifact** — do not write anything to
+   `sources/`; the full answer already lives in `## Explanation`.
 
-7. **Save the source.** Write the **final** (refined) answer to `sources/<sourceSlug>.md`,
-   where `<sourceSlug>` is the **title alone**, slugified the same way — the exact value you
-   put in the note's `source:` and `^[...]` markers, and distinct from `<noteSlug>` so the
-   wikilink is unambiguous. Use this header, so the unformatted answer is never lost and the
-   note's `^[<sourceSlug>]` citation markers resolve to it:
-   ```
-   ---
-   title: <noteTitle>
-   question: <the original question>
-   created: <YYYY-MM-DD today>
-   ---
-
-   <final free-form answer>
-   ```
-
-8. **Regenerate** derived files:
+7. **Regenerate** derived files:
    ```powershell
    node "<SKILL_DIR>\wiki-maintain.mjs" "<vaultPath>" --op ask --title "<noteTitle>"
    ```
 
-9. **Report** the saved note path and the assigned domain/topic to the user.
+8. **Report** the saved note path and the assigned domain/topic to the user.
