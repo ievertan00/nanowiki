@@ -1,7 +1,7 @@
 # Wiki note schema & conventions
 
 Shared reference for the note-writing skills (`wiki-ask`, `wiki-rewrite`, `wiki-ingest`,
-`wiki-deep-ingest`).
+`wiki-deep-ingest`, `wiki-update`).
 You **are** the LLM here — there is no external API. You do the generation yourself,
 then write files and run the maintenance helper.
 
@@ -46,6 +46,24 @@ maintenance helper and Obsidian parse them by exact match):
   `## Open Questions`, `## Human Insight`
 - Typed-link keywords: `extends::`, `contradicts::`, `requires::`, `examples::`, `related::`
 - YAML keys: `title:`, `type:`, `source:`, `domain:`, `topic:`, `tags:`, `aliases:`, `description:`, `created:`, `updated:`
+
+## Personas & structures (used by `wiki-ask` and `wiki-ingest`)
+
+`-p`/`--persona <name>` and `-s`/`--structure <name>` select user-maintained,
+vault-local templates that shape the **pass-1** output only — the free-form answer
+(`wiki-ask`) or the ingest `summary` (`wiki-ingest`). Pass 2 (Format) is never affected;
+it just reshapes whatever the richer pass-1 output contains. Empty `templates/personas/`
+and `templates/structures/` dirs exist in every vault. Omitting both flags is a no-op.
+
+**Load** — only when the flag is given: read `<vault>\templates\personas\<name>.md` /
+`<vault>\templates\structures\<name>.md`. If a named file doesn't exist, stop with an
+error: `Persona not found: <name> (looked in <vault>\templates\personas\<name>.md)`
+(same wording for a missing structure).
+
+**Apply** (pass 1 only):
+- A **persona** shapes the voice/framing of the pass-1 output.
+- A **structure** is a checklist of aspects/angles to cover where the material warrants,
+  so nothing the user habitually cares about is neglected.
 
 ## Frontmatter
 
@@ -193,7 +211,7 @@ write your best name here and let the maintenance script normalize it.
 Run the bundled helper (next to this skill's `SKILL.md`) once at the end:
 
 ```powershell
-node "<this skill folder>\wiki-maintain.mjs" "<vaultPath>" --op <ask|rewrite|ingest|deep-ingest> --title "<noteTitle>"
+node "<this skill folder>\wiki-maintain.mjs" "<vaultPath>" --op <ask|rewrite|ingest|deep-ingest|update> --title "<noteTitle>"
 ```
 
 It rebuilds `moc/*.md`, `meta/index.md`, the `wiki-config.json` taxonomy, the

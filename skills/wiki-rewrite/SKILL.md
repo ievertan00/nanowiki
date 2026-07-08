@@ -1,6 +1,6 @@
 ---
 name: wiki-rewrite
-description: Reformat an existing file into the Obsidian wiki note schema (single pass). Preserves the human-authored Human Insight section verbatim, assigns domain/topic, links only to existing notes, and regenerates the vault's MOC/index/log. Use when the user runs /wiki-rewrite or asks to "reformat this note", "import this draft into the wiki", or normalize a rough/literature file into the schema. The model behind this CLI is the generator — no API keys needed.
+description: Reformat an existing file into the Obsidian wiki note schema (single pass). Use when the user runs /wiki-rewrite or asks to "reformat this note", "import this draft into the wiki", or normalize a rough/literature file into the schema. The model behind this CLI is the generator — no API keys needed.
 argument-hint: "<name-in-sources | @path | path> [--type atomic|literature] [--lang zh|en] [--vault <path>]"
 ---
 

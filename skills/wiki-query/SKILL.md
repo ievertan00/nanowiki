@@ -1,6 +1,6 @@
 ---
 name: wiki-query
-description: Answer a question FROM the existing Obsidian wiki notes only — the closed-world counterpart of wiki-ask. Finds the most relevant notes, answers using nothing but their contents, and grounds every claim with [[note]] citations; says so plainly when the notes can't answer. Read-only — writes nothing, not even a log entry. Use when the user runs /wiki-query or asks "what does my wiki say about…", "answer from my notes", or wants to query the vault without creating a note. The model behind this CLI is the answerer — no API keys needed.
+description: Answer a question FROM the existing Obsidian wiki notes only — the closed-world, read-only counterpart of wiki-ask (writes nothing, not even a log entry). Use when the user runs /wiki-query or asks "what does my wiki say about…", "answer from my notes", or wants to query the vault without creating a note. The model behind this CLI is the answerer — no API keys needed.
 argument-hint: "<question> [--lang zh|en] [--vault <path>]"
 ---
 

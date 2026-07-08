@@ -1,6 +1,6 @@
 ---
 name: wiki-deep-ingest
-description: Deep-ingest a source document or URL into the Obsidian wiki — first perform the wiki-ingest literature-note/fan-out workflow, then generate reviewable source-grounded follow-up questions, save each approved question as a grounded synthesis note using the new literature note plus relevant existing notes, and finish with a lint-style health check report. Use when the user runs /wiki-deep-ingest, asks to "deep ingest" a paper/article/URL/source, or wants an ingest loop followed by related questions/ask loops and lint. The host agent is the generator/analyzer — no API keys needed.
+description: Deep-ingest a source document or URL into the Obsidian wiki: run the ingest workflow, propose follow-up questions, save approved ones as synthesis notes, then lint the vault. Use when the user runs /wiki-deep-ingest, asks to "deep ingest" a paper/article/URL/source, or wants an ingest loop followed by related questions/ask loops and lint. The host agent is the generator/analyzer — no API keys needed.
 argument-hint: "<name-in-sources | @path | path | url> [--questions <n>] [--yes] [--fix] [--lang zh|en] [-p|--persona <name>] [-s|--structure <name>] [--vault <path>]"
 ---
 

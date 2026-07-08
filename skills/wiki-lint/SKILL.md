@@ -1,6 +1,6 @@
 ---
 name: wiki-lint
-description: Health-check an Obsidian wiki vault. First consolidates duplicate/variant domains and re-tags affected notes, then produces a Markdown report covering contradictions, orphan notes, missing links, thin notes, and concepts that deserve their own page — saved to meta/lint-<date>.md. Regenerates the vault's MOC/index and logs the run. Use when the user runs /wiki-lint or asks to "lint the wiki", "health-check the vault", or "find contradictions/orphans". The model behind this CLI is the analyzer — no API keys needed.
+description: Health-check an Obsidian wiki vault and write a report to meta/lint-<date>.md. Use when the user runs /wiki-lint or asks to "lint the wiki", "health-check the vault", or "find contradictions/orphans". The model behind this CLI is the analyzer — no API keys needed.
 argument-hint: "[--lang zh|en] [--vault <path>]"
 ---
 

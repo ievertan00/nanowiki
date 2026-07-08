@@ -26,6 +26,7 @@ describe('skill asset sync', () => {
       ['skills', 'wiki-rewrite', 'wiki-maintain.mjs'],
       ['skills', 'wiki-ingest', 'wiki-maintain.mjs'],
       ['skills', 'wiki-deep-ingest', 'wiki-maintain.mjs'],
+      ['skills', 'wiki-update', 'wiki-maintain.mjs'],
       ['skills', 'wiki-lint', 'wiki-maintain.mjs']
     ]);
   });
@@ -35,7 +36,8 @@ describe('skill asset sync', () => {
       ['skills', 'wiki-ask', 'note-schema.md'],
       ['skills', 'wiki-rewrite', 'note-schema.md'],
       ['skills', 'wiki-ingest', 'note-schema.md'],
-      ['skills', 'wiki-deep-ingest', 'note-schema.md']
+      ['skills', 'wiki-deep-ingest', 'note-schema.md'],
+      ['skills', 'wiki-update', 'note-schema.md']
     ]);
   });
 
@@ -46,6 +48,7 @@ describe('skill asset sync', () => {
       ['skills', 'wiki-rewrite', 'WIKI.template.md'],
       ['skills', 'wiki-ingest', 'WIKI.template.md'],
       ['skills', 'wiki-deep-ingest', 'WIKI.template.md'],
+      ['skills', 'wiki-update', 'WIKI.template.md'],
       ['skills', 'wiki-lint', 'WIKI.template.md']
     ]);
   });

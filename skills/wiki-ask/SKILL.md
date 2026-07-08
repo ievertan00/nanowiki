@@ -1,6 +1,6 @@
 ---
 name: wiki-ask
-description: Answer a question and save it as a structured Obsidian wiki note. Two-pass — answer the question well, then format the answer into the note schema, assign domain/topic, link only to existing notes, and regenerate the vault's MOC/index/log. Use when the user runs /wiki-ask or asks to "add a note to the wiki", "ask the wiki", or capture an answer into their Obsidian vault. The model behind this CLI is the generator — no API keys needed.
+description: Answer a question and save it as a structured note in the user's Obsidian wiki vault. Use when the user runs /wiki-ask or asks to "add a note to the wiki", "ask the wiki", or capture an answer into their Obsidian vault. The model behind this CLI is the generator — no API keys needed.
 argument-hint: "<question> [--lang zh|en] [--type atomic|literature] [-p|--persona <name>] [-s|--structure <name>] [--vault <path>]"
 ---
 
@@ -30,12 +30,8 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
 2. **Gather context.** List the basenames in `notes/` (the existing-notes list) and
    read the `domains` taxonomy from `wiki-config.json`.
 
-   If `-p`/`--persona <name>` or `-s`/`--structure <name>` was given, read
-   `<vault>\templates\personas\<name>.md` / `<vault>\templates\structures\<name>.md`.
-   Error if a named file doesn't exist (`Persona not found: <name> (looked in
-   <vault>\templates\personas\<name>.md)`, same wording for structures). These are
-   user-maintained, vault-local templates — empty `templates/personas/` and
-   `templates/structures/` dirs already exist in every vault.
+   If `-p`/`--persona <name>` or `-s`/`--structure <name>` was given, load the
+   template(s) per the **Personas & structures** section of `note-schema.md`.
 
 3. **Pass 1 — Answer.** Answer the question accurately and thoroughly, as if explaining
    to a knowledgeable colleague. No schema, no frontmatter — just the best free-form
@@ -43,13 +39,9 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
    the **final** version (after the refine loop in step 4) is what pass 2 preserves at
    full density in the note's `## Explanation` — so make it as rich as you can.
 
-   - If a **persona** template was loaded, let its text shape the voice/framing of
-     this answer.
-   - If a **structure** template was loaded, treat its text as a checklist of
-     aspects/angles to cover where relevant — don't omit something the user
-     habitually cares about just because you wouldn't otherwise emphasize it.
-   - Both are **pass-1 only**: pass 2 (Format) below is unaffected — it just reshapes
-     whatever this richer answer contains.
+   - If a persona/structure template was loaded, apply it to **this answer** per the
+     **Personas & structures** section of `note-schema.md` (this free-form answer is
+     the pass-1 output it governs).
 
 4. **Refine loop — interactive (mirrors the CLI's `ask` loop).** Before formatting,
    let the user drive the answer further. Repeat these sub-steps until the user is done:
