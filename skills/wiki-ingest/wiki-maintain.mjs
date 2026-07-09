@@ -478,13 +478,22 @@ ensureScaffold();
 const renamedCount = renameToSchema();
 const notes = readNotes();
 
+// Resilient delete for Windows: retry transient EPERM/EBUSY locks, then clear a
+// read-only attribute; degrade to a warning rather than aborting the whole pass.
+function safeRm(p) {
+  try {
+    fs.rmSync(p, { force: true, maxRetries: 5, retryDelay: 100 });
+    return;
+  } catch (err) {
+    if (err.code !== 'EPERM' && err.code !== 'EACCES') throw err;
+    try { fs.chmodSync(p, 0o666); fs.rmSync(p, { force: true, maxRetries: 5, retryDelay: 100 }); return; } catch {}
+    console.warn(`Warning: could not remove stale MOC ${path.basename(p)} (${err.code}); leaving it in place.`);
+  }
+}
+
 // ── MOC: one file per domain, grouped by topic, sorted by title ──────────────
 function rebuildMOC() {
   if (!fs.existsSync(mocDir)) fs.mkdirSync(mocDir, { recursive: true });
-  // Wipe stale .md first so removed/merged domains leave no orphan MOC file.
-  for (const f of fs.readdirSync(mocDir).filter(f => f.endsWith('.md'))) {
-    fs.rmSync(path.join(mocDir, f));
-  }
   const byDomain = {};
   for (const { slug, fm } of notes) {
     const domain = fm.domain || 'uncategorized';
@@ -492,6 +501,13 @@ function rebuildMOC() {
     const title = fm.title || slug;
     (byDomain[domain] ??= {});
     (byDomain[domain][topic] ??= []).push({ slug, title });
+  }
+  // Delete only MOC files whose domain no longer exists — the rest are rewritten
+  // in place below. A blanket wipe tripped Windows EPERM when a sync client or
+  // indexer held a stale MOC's handle without delete-share; scoping deletes to
+  // true orphans avoids the delete entirely in the common (no-orphan) case.
+  for (const f of fs.readdirSync(mocDir).filter(f => f.endsWith('.md'))) {
+    if (!byDomain[path.basename(f, '.md')]) safeRm(path.join(mocDir, f));
   }
   for (const [domain, topics] of Object.entries(byDomain)) {
     let out = '';
