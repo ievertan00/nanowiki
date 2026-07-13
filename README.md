@@ -69,6 +69,18 @@ That's it. Point Obsidian at `WIKI_PATH` and your knowledge graph is already the
 
 ---
 
+## See It Before Installing
+
+The [`demo/`](demo/) directory contains a small, read-only example vault that you can
+open directly in Obsidian or inspect as plain Markdown. It shows one question, one
+source, and one cross-note synthesis flowing into typed links, a generated Map of
+Content, an index, and an open-question queue — no API key or setup required.
+
+For end-to-end usage patterns, see [Case Studies](docs/case-studies.md). The rationale
+and scope behind these examples are recorded in the [Demo Design Memo](docs/design-memo-demo-and-case-studies.md).
+
+---
+
 ## Two Front Ends, One Vault
 
 | | CLI (`wiki <cmd>`) | Skill (`/wiki-<cmd>`) |

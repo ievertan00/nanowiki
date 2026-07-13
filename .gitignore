@@ -9,6 +9,8 @@ docs/*
 !docs/pkm-philosophy-polish.md
 !docs/note-taking-loop-improvements.md
 !docs/llm-wiki-v2-practices-for-nanowiki.md
+!docs/case-studies.md
+!docs/design-memo-demo-and-case-studies.md
 social-card-nanowiki/
 .agents/
 
@@ -46,3 +48,9 @@ Thumbs.db
 *.ntvs*
 *.njsproj
 *.sln
+
+# Added by user request
+docs/
+demo/
+output/
+promotions/
