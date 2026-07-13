@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { isUrl, adapterFor, parseReaderResponse, fetchUrlSource } from '../src/fetch-source.js';
+import { isUrl, adapterFor, parseYouTubeVideoId, formatYouTubeTranscript, parseReaderResponse, fetchUrlSource } from '../src/fetch-source.js';
 
 test('isUrl distinguishes URLs from file paths', () => {
   assert.ok(isUrl('https://example.com/a'));
@@ -18,6 +18,26 @@ test('adapterFor routes YouTube hosts, defaults to web', () => {
   assert.equal(adapterFor('not a url'), 'web');
 });
 
+test('parseYouTubeVideoId handles standard YouTube URL forms', () => {
+  const id = 'dQw4w9WgXcQ';
+  assert.equal(parseYouTubeVideoId(`https://www.youtube.com/watch?v=${id}&t=3`), id);
+  assert.equal(parseYouTubeVideoId(`https://youtu.be/${id}?si=x`), id);
+  assert.equal(parseYouTubeVideoId(`https://www.youtube.com/shorts/${id}`), id);
+  assert.equal(parseYouTubeVideoId(`https://www.youtube.com/embed/${id}`), id);
+  assert.equal(parseYouTubeVideoId(`https://www.youtube.com/live/${id}`), id);
+  assert.throws(() => parseYouTubeVideoId('https://www.youtube.com/playlist?list=PL123'), /video ID/);
+});
+
+test('formatYouTubeTranscript produces timestamped ingest markdown', () => {
+  const content = formatYouTubeTranscript({
+    video_id: 'dQw4w9WgXcQ', language: 'English', language_code: 'en', is_generated: false,
+    snippets: [{ text: 'First line', start: 1.2 }, { text: 'Second\nline', start: 65.9 }]
+  });
+  assert.match(content, /- Language: English \(en\)/);
+  assert.match(content, /\[0:01\] First line/);
+  assert.match(content, /\[1:05\] Second line/);
+});
+
 test('parseReaderResponse extracts title and markdown body', () => {
   const raw = 'Title: Hello World\n\nURL Source: https://e.com\n\nMarkdown Content:\nbody **here**\nline2';
   const { title, content } = parseReaderResponse(raw, 'https://e.com');
@@ -26,12 +46,14 @@ test('parseReaderResponse extracts title and markdown body', () => {
 });
 
 test('fetchUrlSource tags YouTube as a transcript', async () => {
-  const body = 'transcript line. '.repeat(20); // > MIN_READABLE_CHARS
-  const fakeFetch = async () => ({ ok: true, text: async () => `Title: V\n\nMarkdown Content:\n${body}` });
-  const r = await fetchUrlSource('https://youtu.be/x', fakeFetch);
+  const fakeTranscript = async (videoId, languages) => ({
+    video_id: videoId, language: 'English', language_code: 'en', is_generated: true,
+    snippets: [{ text: `languages: ${languages.join(',')}`, start: 0 }]
+  });
+  const r = await fetchUrlSource('https://youtu.be/dQw4w9WgXcQ', undefined, fakeTranscript);
   assert.equal(r.sourceType, 'video-transcript');
-  assert.equal(r.title, 'V');
-  assert.equal(r.content, body.trim());
+  assert.equal(r.title, 'YouTube Transcript dQw4w9WgXcQ');
+  assert.match(r.content, /languages: zh-Hans,zh,en/);
 });
 
 test('fetchUrlSource surfaces HTTP errors', async () => {

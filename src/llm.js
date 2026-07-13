@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { getContentPrompt, getFormatPrompt, getRefinePrompt, getSuggestionsPrompt, getRepairPrompt, getQueryPrompt, getSynthesisFrontmatterPrompt } from './prompts.js';
 import { getProvider } from './provider.js';
 import { validateNote } from './validator.js';
+import { completeChat, parseJsonObject } from './llm-runtime.js';
 
 async function chat(config, providerName, OpenAIClient, { system, user }, { json = false } = {}) {
   const { client, model } = getProvider(config, providerName, OpenAIClient);
@@ -13,8 +14,7 @@ async function chat(config, providerName, OpenAIClient, { system, user }, { json
     ]
   };
   if (json) payload.response_format = { type: 'json_object' };
-  const result = await client.chat.completions.create(payload);
-  return result.choices[0].message.content;
+  return completeChat(client, payload);
 }
 
 const FRONTMATTER_KEYS = ['title', 'type', 'source', 'domain', 'topic', 'tags', 'aliases', 'description', 'created', 'updated'];
@@ -47,13 +47,9 @@ function renderNote(frontmatter, body) {
 // model ignored the JSON instruction (caller falls back to treating the raw
 // reply as a legacy markdown note — saveNote's cleaning still applies).
 export function assembleNote(raw) {
-  const cleaned = (raw || '').replace(/```json|```/g, '');
-  const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start === -1 || end <= start) return null;
   try {
-    const parsed = JSON.parse(cleaned.slice(start, end + 1));
-    if (parsed && typeof parsed === 'object' && parsed.frontmatter && typeof parsed.body === 'string') {
+    const parsed = parseJsonObject(raw);
+    if (parsed.frontmatter && typeof parsed.frontmatter === 'object' && typeof parsed.body === 'string') {
       return renderNote(parsed.frontmatter, parsed.body);
     }
   } catch { /* fall through */ }
@@ -123,7 +119,7 @@ export async function synthesize(config, { question, answer, providerName = 'def
   const prompt = getSynthesisFrontmatterPrompt(question, answer, config.domains, config.language || 'zh');
   const raw = await chat(config, providerName, OpenAIClient, prompt, { json: true });
   let fm = {};
-  try { fm = JSON.parse((raw || '').replace(/```json|```/g, '').trim()); } catch { /* leave empty; repair fills gaps */ }
+  try { fm = parseJsonObject(raw); } catch { /* leave empty; repair fills gaps */ }
 
   const cited = [...new Set([...String(answer).matchAll(/\[\[([^\]]+)\]\]/g)].map(m => m[1].trim()))];
   const connections = cited.map(n => `related:: [[${n}]]`).join('\n');
@@ -155,7 +151,7 @@ export async function suggestQuestions(config, { answer, providerName = 'default
   const prompt = getSuggestionsPrompt(answer, config.language || 'zh', count);
   const raw = await chat(config, providerName, OpenAIClient, prompt, { json: true });
   try {
-    const parsed = JSON.parse((raw || '').replace(/```json|```/g, '').trim());
+    const parsed = parseJsonObject(raw);
     return Array.isArray(parsed.questions)
       ? parsed.questions.filter(q => typeof q === 'string' && q.trim()).map(q => q.trim())
       : [];

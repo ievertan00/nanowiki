@@ -1,0 +1,7 @@
+[
+  {"id":"valid-extraction","kind":"json-shape","output":"{\"summary\":\"KV cache avoids repeated prefill.\",\"updates\":[]}","shape":{"summary":"string","updates":"array"},"expected":true},
+  {"id":"fenced-extraction","kind":"json-shape","output":"```json\n{\"summary\":\"ok\",\"updates\":[]}\n```","shape":{"summary":"string","updates":"array"},"expected":true},
+  {"id":"missing-updates","kind":"json-shape","output":"{\"summary\":\"ok\"}","shape":{"summary":"string","updates":"array"},"expected":false},
+  {"id":"wrong-summary-type","kind":"json-shape","output":"{\"summary\":42,\"updates\":[]}","shape":{"summary":"string","updates":"array"},"expected":false},
+  {"id":"malformed-json","kind":"json-shape","output":"{broken}","shape":{"summary":"string","updates":"array"},"expected":false}
+]

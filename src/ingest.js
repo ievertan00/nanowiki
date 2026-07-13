@@ -4,14 +4,7 @@ import { getProvider } from './provider.js';
 import { formatNote, repairNote, assembleNote, carryCreated, carryAliases } from './llm.js';
 import { lostSourceFacts, syncSourceMarkers } from './validator.js';
 import { appendToSection } from './note.js';
-
-function parseExtraction(text) {
-  try {
-    return JSON.parse(text.replace(/^```json\n?|\n?```$/g, '').trim());
-  } catch {
-    return { summary: text, updates: [] };
-  }
-}
+import { completeChat } from './llm-runtime.js';
 
 // Sources longer than this are split for pass-1 extraction so the model isn't
 // asked to compress an entire document into one "summary" string — roughly
@@ -72,12 +65,12 @@ export async function ingestSource(config, { sourceContent, sourceTitle, candida
   for (let i = 0; i < chunks.length; i++) {
     const chunkInfo = chunks.length > 1 ? { index: i, total: chunks.length } : null;
     const { system: sys1, user: usr1 } = getExtractionPrompt(chunks[i], sourceTitle, candidates, lang, chunkInfo, { personaText, structureText });
-    const extraction = await client.chat.completions.create({
+    const extraction = await completeChat(client, {
       model,
       messages: [{ role: 'system', content: sys1 }, { role: 'user', content: usr1 }],
       response_format: { type: 'json_object' }
-    });
-    const { summary, updates } = parseExtraction(extraction.choices[0].message.content);
+    }, { schema: { summary: 'string', updates: 'array' } });
+    const { summary, updates } = extraction;
     summaries.push(summary);
     updateLists.push(updates || []);
   }
@@ -106,7 +99,7 @@ export async function ingestSource(config, { sourceContent, sourceTitle, candida
 export async function updateNote(config, { existingContent, addition, sourceTitle, sourceSlug = null, providerName = 'default' }, OpenAIClient = OpenAI) {
   const { client, model } = getProvider(config, providerName, OpenAIClient);
   const { system, user } = getNoteUpdatePrompt(existingContent, addition, sourceTitle, config.language || 'zh');
-  const result = await client.chat.completions.create({
+  const raw = await completeChat(client, {
     model,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     response_format: { type: 'json_object' }
@@ -114,7 +107,7 @@ export async function updateNote(config, { existingContent, addition, sourceTitl
   // Same {frontmatter, body} path as the format pass: YAML rendered in code, and
   // the existing note's created: and aliases: restored — never the model's job.
   const note = carryAliases(existingContent,
-    carryCreated(existingContent, assembleNote(result.choices[0].message.content) || result.choices[0].message.content));
+    carryCreated(existingContent, assembleNote(raw) || raw));
   // Whole-note rewrites are the widest trust boundary in the pipeline — verify
   // the schema survived and repair once if not.
   const updated = await repairNote(config, { note, providerName }, OpenAIClient);

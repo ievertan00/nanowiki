@@ -12,6 +12,8 @@
   },
   "scripts": {
     "test": "node --test",
+    "eval": "node evals/run.mjs",
+    "check": "npm test && npm run eval",
     "skills:install": "node scripts/install-skills.mjs"
   },
   "dependencies": {

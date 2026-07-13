@@ -311,6 +311,7 @@ wiki ingest attention-paper.md                 # bare name resolves under <vault
 wiki ingest attention-paper.pdf                # PDF text is extracted automatically
 wiki ingest whiteboard-photo.png               # image text is OCR'd via tesseract.js
 wiki ingest https://example.com/great-post    # URLs are fetched into sources/ first
+wiki ingest https://youtu.be/dQw4w9WgXcQ      # YouTube captions become transcript Markdown
 ```
 
 A single source may update many notes: the LLM extracts a summary plus targeted additions, writes a `literature` note, and integrates each addition into the existing note it belongs to. Updates that target a note which doesn't exist are skipped — never invented.
@@ -322,9 +323,12 @@ A single source may update many notes: the LLM extracts a summary plus targeted 
 | Markdown/text | read directly | read directly |
 | PDF | text extracted via `pdf-parse` (text-based PDFs only) | read via the agent's Read tool (chunked by page range if >20 pages) |
 | Image | OCR'd via `tesseract.js` (pure-WASM, `eng+chi_sim`) | read visually and transcribed by the agent |
-| Web/YouTube URL | fetched to `sources/` via Jina Reader, then ingested | fetched and reduced to Markdown by the agent's own fetch tool |
+| Web URL | fetched to `sources/` via Jina Reader, then ingested | fetched and reduced to Markdown by the agent's own fetch tool |
+| YouTube URL | transcript fetched with `youtube-transcript-api`, then saved as timestamped Markdown | transcript fetched by the agent's own fetch tool |
 
 The CLI OCRs standalone image files locally — `tesseract.js` is pure-WASM (no system binary), recognizes English + Simplified Chinese, and downloads its traineddata on first use, caching it thereafter. Scanned/image-only PDFs still need the skill front end (which reads them visually via the agent), since the CLI would have to rasterize PDF pages first.
+
+YouTube ingestion adds one optional Python dependency. Install it once with `python -m pip install -r requirements-youtube.txt`. Set `WIKI_PYTHON` if your Python launcher has a different name, and override the ordered language preference with `YOUTUBE_TRANSCRIPT_LANGUAGES` (default: `zh-Hans,zh,en`).
 
 ### Why one literature note per source?
 

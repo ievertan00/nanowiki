@@ -1,10 +1,15 @@
 // URL-aware ingestion adapters. A bare URL given to `wiki ingest` is fetched and
 // converted to clean markdown here, then handed to the normal ingest pipeline.
 //
-// Extraction goes through Jina Reader (https://r.jina.ai/<url>), which returns
-// readable markdown for any page and pulls transcripts for YouTube videos — so
-// both adapters share one fetch path and the module stays dependency-free.
-// Set JINA_API_KEY in .env for higher rate limits.
+// Web pages go through Jina Reader. YouTube URLs use youtube-transcript-api via
+// a small Python bridge so transcript retrieval does not depend on page chrome.
+
+import { execFile } from 'node:child_process';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+
+const execFileAsync = promisify(execFile);
 
 const READER = 'https://r.jina.ai/';
 
@@ -12,6 +17,9 @@ const READER = 'https://r.jina.ai/';
 // JS-rendered SPA shell, a login/paywall page, or an empty stub rather than
 // real readable content — reject it loudly instead of ingesting garbage.
 const MIN_READABLE_CHARS = 200;
+const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
+const DEFAULT_YOUTUBE_LANGUAGES = ['zh-Hans', 'zh', 'en'];
+const PYTHON_BRIDGE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'youtube-transcript.py');
 
 export function isUrl(arg) {
   return /^https?:\/\//i.test((arg || '').trim());
@@ -25,6 +33,78 @@ export function adapterFor(url) {
   catch { return 'web'; }
   if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtu.be') return 'youtube';
   return 'web';
+}
+
+export function parseYouTubeVideoId(value) {
+  const input = String(value || '').trim();
+  if (YOUTUBE_ID.test(input)) return input;
+  let parsed;
+  try { parsed = new URL(input); }
+  catch { throw new Error(`Invalid YouTube URL: ${value}`); }
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+  let candidate = '';
+  if (host === 'youtu.be') candidate = parsed.pathname.split('/').filter(Boolean)[0] || '';
+  if (host === 'youtube.com' || host === 'm.youtube.com') {
+    candidate = parsed.searchParams.get('v') || '';
+    if (!candidate) {
+      const [kind, id] = parsed.pathname.split('/').filter(Boolean);
+      if (['shorts', 'embed', 'live'].includes(kind)) candidate = id || '';
+    }
+  }
+  if (!YOUTUBE_ID.test(candidate)) throw new Error(`Could not find a valid YouTube video ID in ${value}`);
+  return candidate;
+}
+
+function formatTimestamp(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    : `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+export function formatYouTubeTranscript(transcript) {
+  const snippets = Array.isArray(transcript?.snippets) ? transcript.snippets : [];
+  const lines = snippets
+    .map(({ text, start = 0 }) => `[${formatTimestamp(start)}] ${String(text || '').replace(/\s+/g, ' ').trim()}`)
+    .filter(line => !/\]\s*$/.test(line));
+  if (lines.length === 0) throw new Error('YouTube returned an empty transcript');
+  return [
+    '# Transcript', '',
+    `- Video ID: ${transcript.video_id}`,
+    `- Language: ${transcript.language} (${transcript.language_code})`,
+    `- Automatically generated: ${transcript.is_generated ? 'yes' : 'no'}`,
+    '', '## Transcript', '', ...lines
+  ].join('\n');
+}
+
+async function runPythonTranscript(videoId, languages) {
+  const python = process.env.WIKI_PYTHON || 'python';
+  try {
+    const { stdout } = await execFileAsync(python, [PYTHON_BRIDGE, videoId, JSON.stringify(languages)], {
+      windowsHide: true,
+      maxBuffer: 50 * 1024 * 1024
+    });
+    return JSON.parse(stdout);
+  } catch (error) {
+    const detail = error.stderr?.trim() || error.message;
+    throw new Error(`youtube-transcript-api failed for ${videoId}: ${detail}`);
+  }
+}
+
+export async function fetchYouTubeSource(url, transcriptFetcher = runPythonTranscript) {
+  const videoId = parseYouTubeVideoId(url);
+  const configured = (process.env.YOUTUBE_TRANSCRIPT_LANGUAGES || '').split(',').map(s => s.trim()).filter(Boolean);
+  const transcript = await transcriptFetcher(videoId, configured.length ? configured : DEFAULT_YOUTUBE_LANGUAGES);
+  return {
+    title: `YouTube Transcript ${videoId}`,
+    content: formatYouTubeTranscript(transcript),
+    url,
+    sourceType: 'video-transcript'
+  };
 }
 
 // Jina Reader replies as:  "Title: ...\n\nURL Source: ...\n\nMarkdown Content:\n<body>"
@@ -46,11 +126,12 @@ async function readViaJina(url, fetchImpl) {
 }
 
 // fetchImpl is injectable for tests; defaults to the global fetch (Node >= 18).
-export async function fetchUrlSource(url, fetchImpl = fetch) {
+export async function fetchUrlSource(url, fetchImpl = fetch, transcriptFetcher = runPythonTranscript) {
   const kind = adapterFor(url);
+  if (kind === 'youtube') return fetchYouTubeSource(url, transcriptFetcher);
   const { title, content } = await readViaJina(url, fetchImpl);
   if (content.trim().length < MIN_READABLE_CHARS) {
     throw new Error(`Reader returned too little readable content for ${url} (${content.trim().length} chars) — likely a JS-rendered page, a login/paywall, or an empty source. Save the content to a local file and ingest that file instead.`);
   }
-  return { title, content, url, sourceType: kind === 'youtube' ? 'video-transcript' : 'web' };
+  return { title, content, url, sourceType: 'web' };
 }
