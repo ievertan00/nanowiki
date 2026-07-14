@@ -316,6 +316,8 @@ wiki ingest https://youtu.be/dQw4w9WgXcQ      # YouTube captions become transcri
 
 A single source may update many notes: the LLM extracts a summary plus targeted additions, writes a `literature` note, and integrates each addition into the existing note it belongs to. Updates that target a note which doesn't exist are skipped — never invented.
 
+For URL inputs, the literature note's `source:` field records the original URL. The fetched article or YouTube transcript is still retained in `sources/` for reproducibility, citation markers, and staleness tracking. File inputs continue to use an Obsidian wikilink to the copied source file.
+
 **Supported source formats:**
 
 | Source | CLI (`wiki ingest`) | Skill (`/wiki-ingest`) |

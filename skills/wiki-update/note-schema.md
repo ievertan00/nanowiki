@@ -76,9 +76,10 @@ title: <specific, unique noun phrase — Title Case, 3–7 words; distinctive en
   stand alone in an index. Avoid generic one-word labels ("Gemini", "Attention").
   Name the precise concept ("Scaled Dot-Product Attention"). For zh the value may be Chinese.>
 type: <atomic | literature | synthesis>
-source: <for a literature note, a quoted wikilink to its source file in sources/, e.g.
-  "[[paper.pdf]]" — KEEP the extension for non-markdown files (Obsidian resolves "[[paper]]"
-  to paper.md). For an atomic note generated from the model's own knowledge (e.g. wiki-ask),
+source: <for a URL-derived literature note, the quoted original URL; for a file-derived
+  literature note, a quoted wikilink to its source file in sources/, e.g. "[[paper.pdf]]"
+  — KEEP the extension for non-markdown files (Obsidian resolves "[[paper]]" to paper.md).
+  For an atomic note generated from the model's own knowledge (e.g. wiki-ask),
   name the generating agent — set your own product name (Claude, Codex, Gemini, …).
   Empty only when neither applies.>
 domain: <closest match from the taxonomy, or a new concise domain>

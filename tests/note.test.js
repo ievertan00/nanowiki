@@ -3,7 +3,7 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { saveNote, saveSource, saveFetchedSource, schemaName, extractHumanInsight, restoreHumanInsight, appendToSection, sourceWikilink } from '../src/note.js';
+import { saveNote, saveSource, saveFetchedSource, schemaName, extractHumanInsight, restoreHumanInsight, appendToSection, sourceWikilink, sourceFrontmatterValue } from '../src/note.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -150,6 +150,17 @@ describe('sourceWikilink', () => {
 
   test('extension match is case-insensitive', () => {
     assert.strictEqual(sourceWikilink('Doc.MD'), '"[[Doc]]"');
+  });
+});
+
+describe('sourceFrontmatterValue', () => {
+  test('uses the original URL for fetched web and YouTube sources', () => {
+    assert.strictEqual(sourceFrontmatterValue('Article.md', 'https://example.com/post?a=1'), '"https://example.com/post?a=1"');
+    assert.strictEqual(sourceFrontmatterValue('Transcript.md', 'https://youtu.be/dQw4w9WgXcQ'), '"https://youtu.be/dQw4w9WgXcQ"');
+  });
+
+  test('keeps the local source wikilink for file ingestion', () => {
+    assert.strictEqual(sourceFrontmatterValue('Paper.pdf'), '"[[Paper.pdf]]"');
   });
 });
 

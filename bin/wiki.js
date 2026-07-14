@@ -10,7 +10,7 @@ import { buildCatalog, selectCandidates } from '../src/retrieve.js';
 import { generateNote, answerQuestion, refineAnswer, suggestQuestions, formatNote, queryWiki, synthesize } from '../src/llm.js';
 import { ingestSource, updateNote } from '../src/ingest.js';
 import { lintWiki, consolidateDomains, applyLintOps, checkCitations, renameToSchema, backfillSources } from '../src/lint.js';
-import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight, sourceWikilink } from '../src/note.js';
+import { saveNote, saveSource, saveFetchedSource, extractHumanInsight, restoreHumanInsight, sourceWikilink, sourceFrontmatterValue } from '../src/note.js';
 import { loadPersona, loadStructure } from '../src/templates.js';
 import { isUrl, fetchUrlSource } from '../src/fetch-source.js';
 import pdfParse from 'pdf-parse';
@@ -155,7 +155,7 @@ async function runIngestWorkflow(arg, { provider, force = false, personaText, st
     structureText
   });
 
-  const literatureWithSource = literatureNote.replace(/^source:.*$/m, () => `source: ${sourceWikilink(sourceFile)}`);
+  const literatureWithSource = literatureNote.replace(/^source:.*$/m, () => `source: ${sourceFrontmatterValue(sourceFile, fetched?.url)}`);
   const { domain, topic, title } = extractFrontmatter(literatureWithSource);
   const noteTitle = title || sourceTitle;
   const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: literatureWithSource });
@@ -657,11 +657,10 @@ program
       structureText
     });
 
-    // Save literature note. source: is stamped in code (not trusted to the LLM) as a
-    // wikilink to the actual file in sources/ — sourceFile keeps its extension, so a
-    // non-md source (e.g. a .pdf) links as [[name.pdf]], which Obsidian can resolve;
-    // [[name]] would only ever resolve to name.md.
-    const literatureWithSource = literatureNote.replace(/^source:.*$/m, () => `source: ${sourceWikilink(sourceFile)}`);
+    // Save literature note. URL ingests cite the original URL; file ingests cite the
+    // actual sources/ file as an Obsidian wikilink. The local snapshot remains the
+    // anchor for citation markers and staleness tracking in both cases.
+    const literatureWithSource = literatureNote.replace(/^source:.*$/m, () => `source: ${sourceFrontmatterValue(sourceFile, fetched?.url)}`);
     const { domain, topic, title } = extractFrontmatter(literatureWithSource);
     const noteTitle = title || sourceTitle;
     const { path: savedPath, renamed } = saveNote(config.wikiPath, { title: noteTitle, content: literatureWithSource });

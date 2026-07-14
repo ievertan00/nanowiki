@@ -118,6 +118,13 @@ export function sourceWikilink(filename) {
   return `"[[${target}]]"`;
 }
 
+// URL ingests cite the original address in literature-note frontmatter while still
+// retaining a local sources/ snapshot for extraction, staleness checks, and ^[]
+// citation markers. File ingests keep the existing Obsidian wikilink behavior.
+export function sourceFrontmatterValue(filename, url = null) {
+  return url ? JSON.stringify(url) : sourceWikilink(filename);
+}
+
 function slugifyFileBase(title) {
   return title.replace(/[^a-zA-Z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '');
 }

@@ -44,8 +44,9 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      ```
      The helper's compact JSON provides `sourceTitle`, `sourceFile`, and `sourcePath` and
      writes the complete timestamped `video-transcript` Markdown directly into
-     `<vault>\sources\`. Read that created file as the source content, skip the remaining
-     URL-writing and file-resolution rules, and continue at step 2. If the helper fails,
+     `<vault>\sources\`. Set `sourceUrl` to the original YouTube URL. Read that created
+     file as the source content, skip the remaining URL-writing and file-resolution
+     rules, and continue at step 2. If the helper fails,
      **stop**, write nothing else, report its upstream exception verbatim, and tell the
      user to save a transcript to a local file and ingest that instead. Do not retry,
      use yt-dlp, fetch YouTube page chrome, generate a scraper, or use speech-to-text.
@@ -70,7 +71,8 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      fetched: <YYYY-MM-DD>
      ---
      ```
-     Set `sourceTitle` = the page title and `sourceFile` = `<slug>.md`, use the fetched
+     Set `sourceTitle` = the page title, `sourceFile` = `<slug>.md`, and `sourceUrl` = the
+     original URL. Use the fetched
      Markdown as source content, skip the file-resolution rules, and continue at step 2.
 
    **Otherwise** resolve it to a real file:
@@ -121,10 +123,13 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      output it governs — extract structure-listed aspects where the source addresses them).
 
 4. **Pass 2 — Literature note.** Format `summary` into the note schema as a
-   **literature** note: `type: literature`. Set `source:` to a quoted wikilink to
-   `sourceFile` (the source in `sources/`) — **keep the extension for non-markdown files**
-   so Obsidian can resolve them, drop only a `.md` extension: `source: "[[paper.pdf]]"`
-   for a PDF, `source: "[[My-Notes]]"` for `My-Notes.md`. Assign `domain`/`topic` against
+   **literature** note: `type: literature`. For a URL ingest, set `source:` to the quoted
+   original `sourceUrl`, for example `source: "https://example.com/article"`; the local
+   `sourceFile` remains the processing snapshot and citation-marker anchor. For a file
+   ingest, set `source:` to a quoted wikilink to `sourceFile` — **keep the extension for
+   non-markdown files** so Obsidian can resolve them, dropping only a `.md` extension:
+   `source: "[[paper.pdf]]"` for a PDF or `source: "[[My-Notes]]"` for `My-Notes.md`.
+   Assign `domain`/`topic` against
    the taxonomy. Link only to existing notes. Compute the slug from the note title (fall
    back to `sourceTitle`) and write `notes/<slug>.md`.
 
