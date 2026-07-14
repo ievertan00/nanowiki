@@ -1,7 +1,6 @@
 ---
 name: wiki-ingest
 description: Ingest a source document or URL into the Obsidian wiki — write a literature note for it and fan out updates to existing notes it touches. Accepts a local file or an http(s) URL; YouTube links become transcripts. Use when the user runs /wiki-ingest or asks to "ingest this paper/article/URL", "process this source into the wiki". The model behind this CLI is the generator — no API keys needed.
-argument-hint: "<name-in-sources | @path | path | url> [--lang zh|en] [-p|--persona <name>] [-s|--structure <name>] [--vault <path>]"
 ---
 
 # wiki-ingest
@@ -11,7 +10,8 @@ Two-pass shape (extract, then format + apply). **You are the LLM.**
 
 ## Bundled files
 
-This skill ships `note-schema.md` and `wiki-maintain.mjs` in its own directory. Determine
+This skill ships `note-schema.md`, `wiki-maintain.mjs`,
+`scripts\youtube_transcript.py`, and `requirements-youtube.txt` in its own directory. Determine
 that directory once — written `<SKILL_DIR>` below — and substitute its real absolute path
 into every Read and `node` call (never hardcode a username, `.claude`, or drive letter).
 `<SKILL_DIR>` is the folder this `SKILL.md` was loaded from; if you don't already know it,
@@ -29,32 +29,49 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
    remainder is the file argument. Normalize it: strip a leading `@` (the
    file-reference marker CLIs like Claude Code prepend) and any surrounding quotes.
 
-   **If the argument is an http(s) URL** (matches `^https?://`), fetch it instead of
-   resolving a file:
-   - Fetch the URL with your web-fetch tool and reduce it to clean markdown — the main
-     readable content only, dropping nav/ads/boilerplate. For a YouTube URL
-     (`youtube.com`/`youtu.be`/`m.youtube.com`), capture the video **transcript** rather
-     than the page chrome.
-   - **One fetch attempt only.** If the fetch returns readable article prose, use it. If
-     it returns no usable readable content — a JS-rendered SPA, a login/paywall, raw
-     serialized app state (React/JSON blobs), or near-empty text — **stop and report**
-     that the URL could not be reduced to readable text, and tell the user to save the
-     content to a local file and ingest that instead. Do **not** write scraper scripts,
-     re-parse, or re-read fetched dumps in a loop — there is no second extraction path.
-   - Compute a slug from the page title (the same slug rule used for notes) and write the
-     markdown to `<vault>\sources\<slug>.md` with this frontmatter, then a blank line, then
-     the content:
+   **If the argument is an http(s) URL** (matches `^https?://`), use exactly one of these
+   branches instead of resolving a file:
+
+   - **YouTube** (`youtube.com`, `m.youtube.com`, or `youtu.be`; including `watch`,
+     `shorts`, `embed`, and `live` URLs): never use generic web fetch. Resolve Python as
+     `$env:WIKI_PYTHON` when set, otherwise `python`, then check the dependency with
+     `& $python -c "import youtube_transcript_api"`. If the import is missing, ask the
+     user for permission before running
+     `& $python -m pip install -r "<SKILL_DIR>\requirements-youtube.txt"`; after approval,
+     install it and continue. Invoke the helper **exactly once**:
+     ```powershell
+     & $python "<SKILL_DIR>\scripts\youtube_transcript.py" "<youtube-url>" --vault "<vault>" --languages "zh-Hans,zh,en"
+     ```
+     The helper's compact JSON provides `sourceTitle`, `sourceFile`, and `sourcePath` and
+     writes the complete timestamped `video-transcript` Markdown directly into
+     `<vault>\sources\`. Read that created file as the source content, skip the remaining
+     URL-writing and file-resolution rules, and continue at step 2. If the helper fails,
+     **stop**, write nothing else, report its upstream exception verbatim, and tell the
+     user to save a transcript to a local file and ingest that instead. Do not retry,
+     use yt-dlp, fetch YouTube page chrome, generate a scraper, or use speech-to-text.
+
+     For YouTube, **one attempt** means this one deterministic helper extraction path.
+     The helper's fixed transcript-list/fetch and oEmbed-title requests are part of that
+     attempt; agent-level retries or alternate extraction paths are prohibited.
+
+   - **Every other web URL:** fetch once with the generic web-fetch tool and reduce it to
+     clean Markdown containing only the main readable content (drop navigation, ads, and
+     boilerplate). If that single fetch returns no usable readable content — a
+     JS-rendered SPA, login/paywall, raw serialized app state, or near-empty text — stop,
+     write nothing, and tell the user to save the content to a local file and ingest that
+     instead. Do not write scraper scripts, re-parse, retry, or use another extraction
+     path. Compute a slug from the page title (the note slug rule) and write the Markdown
+     to `<vault>\sources\<slug>.md` with this frontmatter, then a blank line and content:
      ```
      ---
      title: <page title>
      url: <the url>
-     type: <web | video-transcript>
+     type: web
      fetched: <YYYY-MM-DD>
      ---
      ```
-   - Set `sourceTitle` = the page title, `sourceFile` = `<slug>.md` (the file you just
-     wrote), and use the fetched markdown as the source content. Skip the file-resolution
-     rules below and continue at step 2.
+     Set `sourceTitle` = the page title and `sourceFile` = `<slug>.md`, use the fetched
+     Markdown as source content, skip the file-resolution rules, and continue at step 2.
 
    **Otherwise** resolve it to a real file:
    - **Bare filename** — no `/` or `\` (e.g. `paper.md`) → `<vault>\sources\<name>`.

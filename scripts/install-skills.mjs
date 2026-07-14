@@ -5,12 +5,13 @@
 // a verbatim folder copy. That self-containment is also what makes the repo work
 // with `npx add-skill <owner/repo>`, which copies each SKILL.md folder as-is.
 //
-//   node scripts/install-skills.mjs [--link] [--dest <dir>]
+//   node scripts/install-skills.mjs [--link] [--dest <dir>] [--skill <name>]
 //
 //   --link          symlink files instead of copying (repo edits go live;
 //                   on Windows needs Developer Mode or an elevated shell)
 //   --dest <dir>    install into this single skills directory instead of the
 //                   auto-detected defaults
+//   --skill <name>  install only this skill without replacing unrelated skills
 //
 // With no --dest, installs into every detected CLI's skills directory —
 // ~/.claude/skills (Claude Code) and ~/.gemini/skills (Gemini CLI) — for each
@@ -39,6 +40,17 @@ const KNOWN_CLIS = [
 const args = process.argv.slice(2);
 const useLink = args.includes('--link');
 const destIdx = args.indexOf('--dest');
+const skillIdx = args.indexOf('--skill');
+
+if (destIdx !== -1 && !args[destIdx + 1]) throw new Error('--dest requires a directory');
+if (skillIdx !== -1 && !args[skillIdx + 1]) throw new Error('--skill requires a skill name');
+
+let selectedSkills = SKILLS;
+if (skillIdx !== -1) {
+  const requested = args[skillIdx + 1];
+  if (!SKILLS.includes(requested)) throw new Error(`Unknown skill: ${requested}`);
+  selectedSkills = [requested];
+}
 
 let targets;
 if (destIdx !== -1 && args[destIdx + 1]) {
@@ -58,16 +70,25 @@ function place(src, dest) {
   else fs.copyFileSync(src, dest);
 }
 
+function placeTree(srcDir, destDir) {
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const src = path.join(srcDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    if (entry.isDirectory()) placeTree(src, dest);
+    else place(src, dest);
+  }
+}
+
 function installInto(destRoot) {
   let count = 0;
-  for (const skill of SKILLS) {
+  for (const skill of selectedSkills) {
     const srcDir = path.join(skillsDir, skill);
     const target = path.join(destRoot, skill);
     fs.rmSync(target, { recursive: true, force: true }); // clean install — no stale files
-    fs.mkdirSync(target, { recursive: true });
 
     try {
-      for (const f of fs.readdirSync(srcDir)) place(path.join(srcDir, f), path.join(target, f));
+      placeTree(srcDir, target);
     } catch (e) {
       if (useLink && e.code === 'EPERM') {
         console.error(
