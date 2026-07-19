@@ -29,6 +29,15 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
    remainder is the file argument. Normalize it: strip a leading `@` (the
    file-reference marker CLIs like Claude Code prepend) and any surrounding quotes.
 
+   **Determine the mode** (see **Resolving the vault** in `note-schema.md`): if the
+   resolved directory has a `wiki-config.json` it is **vault mode** (all steps as written);
+   otherwise it is **non-vault mode** — write the literature note only, and map every
+   `sources/` and `notes/` write below to a flat `wiki-outputs/<slug>...` path under the
+   working directory (create `wiki-outputs/` if missing), skip context-gathering (step 2),
+   skip the fan-out (step 5), and skip the maintenance helper (step 6). The source pinning,
+   URL fetching, and extraction still run — they just target `wiki-outputs/` instead of
+   `sources/`.
+
    **If the argument is an http(s) URL** (matches `^https?://`), use exactly one of these
    branches instead of resolving a file:
 
@@ -88,8 +97,9 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
    `Copy-Item "<resolved path>" "<vault>\sources\<slug><ext>"`. Set `sourceFile` = the
    basename **with** extension of the file in `sources/` (e.g. `paper.pdf`, `My-Notes.md`).
 
-2. **Gather context.** List `notes/` basenames (existing-notes list) and read the
-   `domains` taxonomy from `wiki-config.json`.
+2. **Gather context.** *(Vault mode only — in non-vault mode skip this: do not read
+   `notes/` or the `domains` taxonomy.)* List `notes/` basenames (existing-notes list) and
+   read the `domains` taxonomy from `wiki-config.json`.
 
    If `-p`/`--persona <name>` or `-s`/`--structure <name>` was given, load the
    template(s) per the **Personas & structures** section of `note-schema.md`.
@@ -128,7 +138,9 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
    the taxonomy. Link only to existing notes. Compute the slug from the note title (fall
    back to `sourceTitle`) and write `notes/<slug>.md`.
 
-5. **Apply updates.** For each `{ note, addition }`:
+5. **Apply updates.** *(Vault mode only — in non-vault mode there is no existing vault to
+   fan out into: treat `updates` as empty and skip this step entirely.)* For each
+   `{ note, addition }`:
    - Compute the target path with the slug rule: `notes/<slug-of-note>.md`.
    - **If the file does not exist, skip it** (report it as skipped — never create it).
    - Else read it, capture its `## Human Insight` body, integrate the `addition`
@@ -140,10 +152,11 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
      `Source Facts` — the citation marker tying the fact to the file in `sources/` —
      and copy every existing `^[...]` marker verbatim (see `note-schema.md` invariants).
 
-6. **Regenerate** derived files:
+6. **Regenerate** derived files *(vault mode only — skip entirely in non-vault mode)*:
    ```powershell
    node "<SKILL_DIR>\wiki-maintain.mjs" "<vaultPath>" --op ingest --title "<sourceTitle>"
    ```
 
 7. **Report**: the literature note path, the count of notes updated, and the list of
-   any skipped (not-found) targets.
+   any skipped (not-found) targets. In non-vault mode, report the `wiki-outputs/` note (and
+   source) path and note that no vault was found, so there was no fan-out.

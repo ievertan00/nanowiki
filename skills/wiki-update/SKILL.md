@@ -30,7 +30,10 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
    anywhere in the line. Error if either the note or the information is missing.
 
 2. **Resolve** the vault path and output language — see `note-schema.md` (`--vault`
-   overrides, else the current working directory).
+   overrides, else the current working directory). **This skill requires an existing
+   vault** (it evolves a note that already exists): if the resolved directory has no
+   `wiki-config.json`, tell the user the current directory is not a wiki vault and stop,
+   writing and scaffolding nothing.
 
 3. **Locate the note.** First compute the exact target with the slug rule:
    `<vault>\notes\<slug-of-note>.md`. If that file exists, use it.

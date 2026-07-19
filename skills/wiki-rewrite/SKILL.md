@@ -23,7 +23,10 @@ frontmatter, body skeleton, slug rule, and invariants. Everything below assumes 
 
 ## Steps
 
-1. **Resolve** the vault path and output language — see `note-schema.md`. Parse
+1. **Resolve** the vault path and output language — see `note-schema.md`. **This skill
+   requires an existing vault** (it normalizes a file into a vault of existing notes): if
+   the resolved directory has no `wiki-config.json`, tell the user the current directory is
+   not a wiki vault and stop, writing and scaffolding nothing. Parse
    `--type`, `--lang`, `--vault`; the remainder is the file argument. Normalize it:
    strip a leading `@` (the file-reference marker CLIs like Claude Code prepend) and
    any surrounding quotes. Then resolve it to a real file — the **same rule as

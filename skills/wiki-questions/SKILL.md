@@ -26,6 +26,10 @@ Same rule as the other wiki skills:
 1. Vault: the directory where the CLI was started (the current working directory);
    `--vault <path>` overrides it.
 
+**This skill requires an existing vault.** If the resolved directory has no
+`wiki-config.json`, it is not a wiki vault — tell the user so and stop, running the harvest
+script on nothing and scaffolding nothing.
+
 There is no `--lang`: the section headings are fixed English tokens and the
 harvested lines are copied verbatim from the notes in whatever language they use.
 
