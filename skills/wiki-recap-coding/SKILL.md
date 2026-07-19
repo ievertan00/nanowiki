@@ -1,13 +1,13 @@
 ---
 name: wiki-recap-coding
-description: Retrospect a CODING work session — review how the engineering went (what shipped, key technical decisions right/wrong) with two deep dives that are the point of this skill: (1) 返工点归因 — for every dead-end/redo/revert, attribute the ROOT CAUSE to a category and name the earlier action that would have prevented it; (2) 验证方式审查 — for every change claimed done, audit HOW it was verified and flag anything asserted-done without exercising the code. Then evaluate the assistant's own performance as severity-ranked, evidence-anchored failures and propose concrete edits to the surfaces future sessions load (CLAUDE.md/GEMINI.md, a skill, a repo doc, a test). Writes one self-contained Markdown report into ./recaps/; never touches the vault. Works on the current live session (no argument) or an external conversation file / pasted transcript (Claude Code/Codex JSONL, ChatGPT/Claude export, plain text). Use when the user runs /wiki-recap-coding or asks to "复盘这次编码 session", "review how this coding session went", "复盘/评估这次开发", "session retrospective" for work that was primarily writing/debugging/refactoring code. For a NON-coding session (research/writing/decision/learning/creative) use wiki-recap-general instead. NOT a knowledge distill (wiki-distill) and NOT a code review of the final diff. Host-agnostic (Claude Code / Codex / Gemini CLI); the host agent is the analyzer — no API key needed.
+description: Retrospect a CODING work session — review how the engineering went (what shipped, key technical decisions right/wrong) with two deep dives that are the point of this skill: (1) 返工点归因 — for every dead-end/redo/revert, attribute the ROOT CAUSE to a category and name the earlier action that would have prevented it; (2) 验证方式审查 — for every change claimed done, audit HOW it was verified and flag anything asserted-done without exercising the code. Then evaluate the assistant's own performance as severity-ranked, evidence-anchored failures and propose concrete edits to the surfaces future sessions load (CLAUDE.md/GEMINI.md, a skill, a repo doc, a test). Writes one self-contained Markdown report into ./wiki-outputs/; never touches the vault. Works on the current live session (no argument) or an external conversation file / pasted transcript (Claude Code/Codex JSONL, ChatGPT/Claude export, plain text). Use when the user runs /wiki-recap-coding or asks to "复盘这次编码 session", "review how this coding session went", "复盘/评估这次开发", "session retrospective" for work that was primarily writing/debugging/refactoring code. For a NON-coding session (research/writing/decision/learning/creative) use wiki-recap-general instead. NOT a knowledge distill (wiki-distill) and NOT a code review of the final diff. Host-agnostic (Claude Code / Codex / Gemini CLI); the host agent is the analyzer — no API key needed.
 argument-hint: "[<@path | path | pasted text>] [--lang zh|en]"
 ---
 
 # wiki-recap-coding
 
 Retrospect a **coding** work session into a **single self-contained report** at
-`./recaps/retro-<project>-<host>-<date>.md` (relative to where the CLI runs).
+`./wiki-outputs/retro-<project>-<host>-<date>.md` (relative to where the CLI runs).
 **You are the LLM** doing the analysis; there is no external API.
 
 The two sections that make this skill worth running over a generic retro are
@@ -36,8 +36,8 @@ MOC/index/taxonomy/log; never ingest. After writing the report, print the path a
 
 ## Resolving the output location & language
 
-1. **Output:** the report goes to `./recaps/<slug>.md` where `.` is the current working
-   directory (where the CLI/agent was started). Create the `recaps/` dir if it does not exist.
+1. **Output:** the report goes to `./wiki-outputs/<slug>.md` where `.` is the current working
+   directory (where the CLI/agent was started). Create the `wiki-outputs/` dir if it does not exist.
    This directory is standalone and unrelated to any wiki vault.
 2. **Language:** `--lang zh|en` wins; else, if a `wiki-config.json` happens to exist in the cwd,
    read its `language` (read-only); else `zh`. Write prose in the resolved language; keep
@@ -171,7 +171,7 @@ assumption / unverified fact / later-contradicting evidence, and tag `confidence
 
 Filename: `<project>` = basename of cwd (external input: infer from filename/content; fallback
 `session`); `<host>` as detected; `<date>` = today `YYYY-MM-DD`. The slug is
-`retro-<project>-<host>-<date>`. Write `./recaps/<slug>.md`. **Never overwrite:** if it exists,
+`retro-<project>-<host>-<date>`. Write `./wiki-outputs/<slug>.md`. **Never overwrite:** if it exists,
 use `-2`, `-3`, … for the basename.
 
 Frontmatter (raw YAML between `---`, no code fence):
@@ -282,10 +282,10 @@ the actual host. Claude may still appear in quoted evidence, source names, or co
 ## Finish
 
 Print the written path and surface the `## 是否应更新系统` proposals for approval. Then **stop** —
-no index line, no ingest, no maintenance, and never auto-apply any proposed edit. The `recaps/`
+no index line, no ingest, no maintenance, and never auto-apply any proposed edit. The `wiki-outputs/`
 file is the only thing this skill wrote.
 
 ```
-Wrote ./recaps/retro-<project>-<host>-<date>.md   (fidelity: <level>, rework: <n>, unverified: <n>)
+Wrote ./wiki-outputs/retro-<project>-<host>-<date>.md   (fidelity: <level>, rework: <n>, unverified: <n>)
 Proposed system updates await your approval — I applied none.
 ```

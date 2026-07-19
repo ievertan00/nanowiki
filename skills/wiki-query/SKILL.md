@@ -23,8 +23,10 @@ Same rules as the other wiki skills:
 Parse `--lang` and `--vault` out of the argument; the remainder is the question.
 Answer in the resolved language (keep technical terms and proper nouns in English).
 
-If the vault has no `notes/` directory or it is empty, tell the user the vault has no
-notes to answer from and stop — do not scaffold anything.
+If the resolved directory has no `wiki-config.json`, it is not a wiki vault — tell the user
+the current directory is not a wiki vault and stop, scaffolding nothing. Likewise, if the
+vault has no `notes/` directory or it is empty, tell the user the vault has no notes to
+answer from and stop — do not scaffold anything.
 
 ## Steps
 

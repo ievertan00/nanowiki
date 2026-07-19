@@ -1,13 +1,13 @@
 ---
 name: wiki-distill
-description: Distill a multi-turn conversation into a faithful, de-chatted SOURCE file in the wiki's sources/ (ready for wiki-ingest) — NOT a summary. Works on the current live session (no argument) or a conversation file/pasted transcript (Claude Code/Codex JSONL, ChatGPT/Claude export, plain text). Use when the user runs /wiki-distill or asks to "turn this conversation into a wiki source" or "distill/archive this chat into notes". NOT for TL;DR / bullet-point summaries and NOT for compacting a coding session — it maximizes fidelity, not brevity. The host agent is the generator — no API key needed.
+description: Distill a multi-turn conversation into a faithful, de-chatted SOURCE file in ./wiki-outputs/ (ready for wiki-ingest) — NOT a summary. Works on the current live session (no argument) or a conversation file/pasted transcript (Claude Code/Codex JSONL, ChatGPT/Claude export, plain text). Use when the user runs /wiki-distill or asks to "turn this conversation into a wiki source" or "distill/archive this chat into notes". NOT for TL;DR / bullet-point summaries and NOT for compacting a coding session — it maximizes fidelity, not brevity. The host agent is the generator — no API key needed.
 argument-hint: "[<@path | path | pasted text>] [--lang zh|en] [--org reorganize|preserve] [--vault <path>]"
 ---
 
 # wiki-distill
 
 Turn a multi-turn conversation into a faithful, de-chatted **source** for the wiki —
-written to `sources/`, ready for `wiki-ingest`. **You are the LLM** doing the
+written to `./wiki-outputs/`, ready for `wiki-ingest`. **You are the LLM** doing the
 distillation; there is no external API.
 
 **This is restructuring, not summarization** — the opposite of a TL;DR. The promise is
@@ -25,10 +25,12 @@ examples, boundary conditions, qualifiers. Anything removed under (3) is **not d
 **It writes a source, not a note.** Never touch `notes/`. Run no maintenance helper,
 regenerate no MOC/index/taxonomy/log, update no taxonomy. Producing the source file is the whole job — after writing it, stop and print the next command.
 
-## Resolving the vault & language
+## Resolving the output location & language
 
-1. **Vault:** the directory where the agent was started (the current working directory);
-   `--vault <path>` overrides it. The source goes to `<vault>\sources\`.
+1. **Output:** the source goes to `./wiki-outputs/` under the working directory (where the
+   agent was started; `--vault <path>` overrides the base directory). Create `wiki-outputs/`
+   if it does not exist. This is written regardless of whether the directory is a wiki vault
+   — distill never reads or scaffolds the vault.
 2. **Language:** `--lang zh|en` always wins. Otherwise the output follows the **source
    conversation's own language** (a Chinese chat → a Chinese source). Keep widely-used
    technical terms and proper nouns in English (AI, LLM, Prompt, Token, Docker, API, …).
@@ -89,7 +91,7 @@ remains is the **input**:
 
 ## Output contract
 
-Write to `<vault>\sources\<slug>.md`. Compute `slug` from the title with the slug rule:
+Write to `./wiki-outputs/<slug>.md` (create `wiki-outputs/` if missing). Compute `slug` from the title with the slug rule:
 collapse every run of characters **not** in `[a-zA-Z0-9一-鿿]` to `-`, then trim
 leading/trailing `-`. **Never overwrite:** if `<slug>.md` already exists, use `<slug>-2.md`
 (then `-3`, …) and print a loud warning naming both files.
@@ -126,6 +128,6 @@ Body:
 Print the written source path and the next command, then stop — **do not** ingest:
 
 ```
-Wrote <vault>\sources\<slug>.md
-Next: wiki ingest <slug>.md    (or /wiki-deep-ingest <slug>.md)
+Wrote ./wiki-outputs/<slug>.md
+Next: wiki ingest ./wiki-outputs/<slug>.md    (or /wiki-deep-ingest ./wiki-outputs/<slug>.md)
 ```

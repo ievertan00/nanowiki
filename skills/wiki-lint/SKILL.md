@@ -25,6 +25,10 @@ Same rules as the note-writing skills:
    `--vault <path>` overrides it.
 2. Language: `--lang zh|en` → `wiki-config.json` `language` → `$env:WIKI_LANG` → `zh`.
 
+**This skill requires an existing vault.** If the resolved directory has no
+`wiki-config.json`, it is not a wiki vault — tell the user wiki-lint only runs inside a
+vault and stop immediately, writing and scaffolding nothing.
+
 Write the report's **prose** in the resolved language (keep technical terms/proper
 nouns in English), but keep the report's own `##` section headings **exactly** in
 English as written below.

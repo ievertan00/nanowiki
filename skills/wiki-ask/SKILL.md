@@ -25,10 +25,14 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
 
 1. **Resolve** the vault path and output language (see `note-schema.md`). Parse
    `--type`, `--lang`, `-p`/`--persona`, `-s`/`--structure`, `--vault` out of the argument; the
-   remainder is the question.
+   remainder is the question. Then **determine the mode** (see **Resolving the vault** in
+   `note-schema.md`): if the resolved directory has a `wiki-config.json` it is **vault
+   mode** (all steps below as written); otherwise it is **non-vault mode** — produce the
+   note only, into `wiki-outputs/`, with the deviations flagged in steps 2, 5, 6 and 7.
 
-2. **Gather context.** List the basenames in `notes/` (the existing-notes list) and
-   read the `domains` taxonomy from `wiki-config.json`.
+2. **Gather context.** *(Vault mode only — in non-vault mode skip this: do not read
+   `notes/` or the `domains` taxonomy.)* List the basenames in `notes/` (the existing-notes
+   list) and read the `domains` taxonomy from `wiki-config.json`.
 
    If `-p`/`--persona <name>` or `-s`/`--structure <name>` was given, load the
    template(s) per the **Personas & structures** section of `note-schema.md`.
@@ -77,18 +81,23 @@ rules, frontmatter, body skeleton, slug rule, and invariants. Everything below a
    - Assign `domain`/`topic` against the existing taxonomy (closest match, or a new
      concise one if nothing fits).
    - In `## Connections`, link **only** to notes from the existing-notes list. If none
-     apply, leave it empty.
+     apply, leave it empty. *(Non-vault mode: leave `## Connections` empty — there is no
+     existing vault to link.)*
    - Add no information beyond what is in the final answer.
 
 6. **Write the note.** Derive `title`/`domain`/`topic` from the frontmatter you just
    wrote (fall back to the question, truncated, if no title). Compute the note slug
-   `<noteSlug>` = `<domain>-<topic>-<title>` (the slug rule in `note-schema.md`) and write
-   `notes/<noteSlug>.md`. This note is the **single artifact** — do not write anything to
-   `sources/`; the full answer already lives in `## Explanation`.
+   `<noteSlug>` = `<domain>-<topic>-<title>` (the slug rule in `note-schema.md`). This note
+   is the **single artifact** — do not write anything to `sources/`; the full answer
+   already lives in `## Explanation`.
+   - **Vault mode:** write `notes/<noteSlug>.md`.
+   - **Non-vault mode:** write `wiki-outputs/<noteSlug>.md` (create the `wiki-outputs/`
+     folder under the working directory if it does not exist).
 
-7. **Regenerate** derived files:
+7. **Regenerate** derived files *(vault mode only — skip entirely in non-vault mode)*:
    ```powershell
    node "<SKILL_DIR>\wiki-maintain.mjs" "<vaultPath>" --op ask --title "<noteTitle>"
    ```
 
-8. **Report** the saved note path and the assigned domain/topic to the user.
+8. **Report** the saved note path and the assigned domain/topic to the user. In non-vault
+   mode, note that the vault was not found so the note was written to `wiki-outputs/`.

@@ -26,6 +26,15 @@ frontmatter, note skeletons, slug/source rules, and invariants.
    `--fix`, `-p`/`--persona`, and `-s`/`--structure`. Default `--questions` to **5**.
    The remaining argument is the source. Use `--yes` only to skip question review.
 
+   **Determine the mode** (see **Resolving the vault** in `note-schema.md`): if the resolved
+   directory has a `wiki-config.json` it is **vault mode** (all steps as written); otherwise
+   it is **non-vault mode** — a self-contained expansion with no vault. In non-vault mode:
+   write the literature note and every synthesis note into a flat `wiki-outputs/` folder
+   under the working directory (create it if missing), answer each generated question from
+   the **ingested source only** (step 5), and skip the fan-out, the vault lint (step 7), and
+   the maintenance helper (step 9). The deep-ingest report (step 8) also goes to
+   `wiki-outputs/`.
+
 2. **Run the ingest workflow.** Follow the same source-resolution, URL fetching,
    source pinning, extraction, literature-note formatting, existing-note fan-out,
    Human Insight preservation, citation-marker stamping, and maintenance rules from
@@ -62,8 +71,12 @@ frontmatter, note skeletons, slug/source rules, and invariants.
    - If the selected notes do not answer part of the question, say so plainly instead
      of adding outside knowledge.
 
+   **Non-vault mode:** there is no vault to select from — answer each question from the
+   **ingested source (and the new literature note) only**, with no `[[note]]` citations,
+   and say plainly where the source does not answer part of the question.
+
 6. **Save each answer as a synthesis note.** Use the synthesis schema from
-   `note-schema.md`:
+   `note-schema.md` (in non-vault mode, write it to `wiki-outputs/<slug>.md`):
    - `type: synthesis`
    - `source:` links to a new source file containing the grounded answer.
    - The body contains `## Question`, `## Answer`, `## Connections`,
@@ -73,13 +86,16 @@ frontmatter, note skeletons, slug/source rules, and invariants.
 
    Continue if one question fails. Record failures for the run report.
 
-7. **Lint the vault.** Perform the `wiki-lint` workflow: consolidate duplicate/variant
+7. **Lint the vault.** *(Vault mode only — skip entirely in non-vault mode; there is no
+   vault to lint.)* Perform the `wiki-lint` workflow: consolidate duplicate/variant
    domains, detect orphans, identify contradictions, missing links, thin notes, concepts
    without pages, and suggested actions. Save `meta/lint-<YYYY-MM-DD>.md`. If `--fix`
    was provided, apply only safe typed-link fixes between existing notes.
 
 8. **Write a deep-ingest report.** Save
-   `meta/deep-ingest-<YYYY-MM-DD>-<sourceTitleSlug>.md` with:
+   `meta/deep-ingest-<YYYY-MM-DD>-<sourceTitleSlug>.md` (in non-vault mode,
+   `wiki-outputs/deep-ingest-<YYYY-MM-DD>-<sourceTitleSlug>.md`, and omit the lint wikilink)
+   with:
    - source title
    - literature note wikilink
    - generated questions
@@ -87,9 +103,10 @@ frontmatter, note skeletons, slug/source rules, and invariants.
    - failed questions
    - lint report wikilink
 
-9. **Regenerate and report.** Run:
+9. **Regenerate and report.** Run *(vault mode only — skip in non-vault mode)*:
    ```powershell
    node "<SKILL_DIR>\wiki-maintain.mjs" "<vaultPath>" --op deep-ingest --title "<sourceTitle>"
    ```
    Then report the literature note path, synthesis-note count, failure count, lint
-   report path, and deep-ingest report path.
+   report path, and deep-ingest report path. In non-vault mode, report the `wiki-outputs/`
+   paths instead and note that no vault was found, so there was no fan-out or lint.

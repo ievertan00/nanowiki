@@ -7,20 +7,42 @@ then write files and run the maintenance helper.
 
 ## Resolving the vault
 
-**The vault is the directory where the CLI was started — the current working
-directory.** If the user runs Claude Code / Gemini CLI in `D:\wiki`, the vault is
-`D:\wiki`.
+Resolve a working directory, then decide whether it is a vault:
 
-1. If an explicit `--vault <path>` argument is given, use it.
-2. Otherwise, use the current working directory.
+1. If an explicit `--vault <path>` argument is given, use it. Otherwise use the current
+   working directory (where Claude Code / Gemini CLI was started).
+2. **That directory is a wiki vault if and only if it contains a `wiki-config.json`
+   file.** `wiki-config.json` is the vault marker — a real vault also holds `sources/`,
+   `notes/`, `moc/`, `meta/`, `templates/`, and `WIKI.md`, but the config file is the
+   single signal that decides vault vs. non-vault. An empty or unrelated directory (a
+   code repo, a Desktop folder) is **not** a vault.
 
-A vault contains: `sources/`, `notes/`, `moc/`, `meta/`, `templates/personas/`,
-`templates/structures/`, `wiki-config.json`, and `WIKI.md`. A fresh, empty directory is
-a valid vault — on the first run the maintenance helper scaffolds everything
-automatically: it creates the six subdirectories, writes a default `wiki-config.json`
-(`{ "language": "zh", "domains": {} }`), and generates a default `WIKI.md` from the
-bundled `WIKI.template.md`. This scaffolding is idempotent — existing files are never
-overwritten — so you don't need to create these yourself.
+### Vault mode — `wiki-config.json` present
+
+Full behavior, the normal path everything below assumes: read the existing notes and the
+`domains` taxonomy for context, link to and fan out into existing notes, save into
+`notes/` / `sources/`, and run the maintenance helper at the end.
+
+### Non-vault mode — no `wiki-config.json`
+
+Never scaffold a vault here and never run the maintenance helper. Skills split into two
+behaviors — each skill's `SKILL.md` states which it takes:
+
+- **Degrade to local outputs** (`wiki-ask`, `wiki-ingest`, `wiki-deep-ingest`): produce
+  the note(s) only. Do **not** read other notes or the `domains` taxonomy, do **not** fan
+  out to or link existing vault notes, and do **not** run the maintenance helper. Write
+  every produced `.md` file — flat, with no `notes/` / `sources/` split — into a
+  `wiki-outputs/` folder directly under the working directory (create it if missing).
+  `## Connections` may link only notes produced in the same run; otherwise leave it empty.
+- **Refuse** (`wiki-rewrite`, `wiki-update`, `wiki-lint`, `wiki-query`, `wiki-questions`):
+  these require an existing vault. Tell the user the current directory is not a wiki vault
+  (no `wiki-config.json`) and stop — write and scaffold nothing.
+
+**Creating a vault is deliberate, never automatic:** run the CLI `wiki init` (it seeds
+`wiki-config.json` and the directories), or — only if the user explicitly asks to
+initialize a vault in the current directory — run the maintenance helper once to scaffold
+it, then proceed in vault mode. A directory is never silently turned into a vault just
+because a skill ran in it.
 
 ## Output language
 
@@ -185,7 +207,8 @@ Leave this section completely empty (heading only). Reserved for the human autho
 `slug` = `<domain>-<topic>-<title>` with every run of characters **not** in
 `[a-zA-Z0-9一-鿿]` replaced by `-`, then trim leading/trailing `-`. Alphanumerics **and**
 CJK ideographs are preserved, so Chinese domains/topics/titles produce Chinese filenames.
-Save the note to `notes/<slug>.md`. If the note has no `domain` or `topic`, fall back to
+Save the note to `notes/<slug>.md` (in non-vault mode, to `wiki-outputs/<slug>.md`
+instead — see **Resolving the vault**). If the note has no `domain` or `topic`, fall back to
 the title alone. Naming is ultimately **code-owned**: `wiki-maintain.mjs` re-derives this
 name on every run and renames any note that drifts, rewriting inbound links — so just
 write your best name here and let the maintenance script normalize it.
@@ -207,6 +230,9 @@ write your best name here and let the maintenance script normalize it.
 - **No code fences** around the note or its frontmatter. Output clean Markdown only.
 
 ## After writing — regenerate derived files
+
+**Vault mode only.** In non-vault mode, skip this section entirely — write nothing beyond
+the `wiki-outputs/` file(s) and run no helper (see **Resolving the vault**).
 
 Run the bundled helper (next to this skill's `SKILL.md`) once at the end:
 
