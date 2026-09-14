@@ -1,48 +1,29 @@
-# Dependencies & Packages
-# Ignoring the folder where local dependencies are installed.
+# Dependencies
 node_modules/
 
-# Documentation
-# Ignoring project documentation as requested.
-docs/*
-!docs/philosophy.md
-!docs/pkm-philosophy-polish.md
-!docs/note-taking-loop-improvements.md
-!docs/llm-wiki-v2-practices-for-nanowiki.md
-!docs/case-studies.md
-!docs/design-memo-demo-and-case-studies.md
-social-card-nanowiki/
-.agents/
-
 # Local Environment & Secrets
-# Ignoring sensitive environment-specific variables and secrets.
 .env
 
 # Logs & Diagnostics
-# Ignoring log files from various tools.
 *.log
 npm-debug.log*
 yarn-debug.log
 yarn-error.log
 
 # Build & Distribution Artifacts
-# Ignoring compiled or bundled files ready for production.
 dist/
 build/
 
 # Testing
-# Ignoring temporary test data and vaults.
 test-vault/
 
 # Operating System & Cache Files
-# Ignoring metadata files created by the OS.
 .DS_Store
 Thumbs.db
 __pycache__/
 *.py[cod]
 
 # IDE & Editor Configuration
-# Ignoring settings files from popular code editors and local tools.
 .vscode/
 .idea/
 .claude/
@@ -51,14 +32,14 @@ __pycache__/
 *.njsproj
 *.sln
 
-# Added by user request
-docs/
+# Local tooling and generated content
+.agents/
 demo/
 output/
 promotions/
+social-card-nanowiki/
 
-# Reliability release artifacts
-!docs/
+# Documentation (keep release documentation only)
 docs/*
 !docs/architecture.md
 !docs/eval-report.md
