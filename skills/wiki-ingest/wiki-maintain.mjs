@@ -63,6 +63,17 @@ function rewriteInboundLinks(fromSlug, toSlug) {
   }
 }
 
+function tryRename(from, to) {
+  try {
+    fs.renameSync(from, to);
+    return true;
+  } catch (err) {
+    if (!['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+    console.warn(`Warning: could not rename locked note ${path.basename(from)}; leaving it in place.`);
+    return false;
+  }
+}
+
 function renameToSchema() {
   if (!fs.existsSync(notesDir)) return 0;
   const files = fs.readdirSync(notesDir).filter(f => f.endsWith('.md'));
@@ -86,7 +97,7 @@ function renameToSchema() {
       while (taken.has(`${desired}-${n}`)) n++;
       desired = `${desired}-${n}`;
     }
-    fs.renameSync(path.join(notesDir, file), path.join(notesDir, `${desired}.md`));
+    if (!tryRename(path.join(notesDir, file), path.join(notesDir, `${desired}.md`))) continue;
     taken.delete(currentSlug);
     taken.add(desired);
     rewriteInboundLinks(currentSlug, desired);
@@ -491,6 +502,28 @@ function safeRm(p) {
   }
 }
 
+function safeWriteFile(p, content) {
+  try {
+    fs.writeFileSync(p, content);
+    return true;
+  } catch (err) {
+    if (!['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+    console.warn(`Warning: could not update locked derived file ${path.basename(p)}; leaving it in place.`);
+    return false;
+  }
+}
+
+function safeAppendFile(p, content) {
+  try {
+    fs.appendFileSync(p, content);
+    return true;
+  } catch (err) {
+    if (!['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+    console.warn(`Warning: could not append locked log ${path.basename(p)}; leaving it in place.`);
+    return false;
+  }
+}
+
 // ── MOC: one file per domain, grouped by topic, sorted by title ──────────────
 function rebuildMOC() {
   if (!fs.existsSync(mocDir)) fs.mkdirSync(mocDir, { recursive: true });
@@ -518,7 +551,7 @@ function rebuildMOC() {
       });
       out += '\n';
     }
-    fs.writeFileSync(path.join(mocDir, `${domain}.md`), out);
+    safeWriteFile(path.join(mocDir, `${domain}.md`), out);
   }
 }
 
@@ -528,7 +561,7 @@ function rebuildIndex() {
   const slugs = notes.map(n => n.slug).sort();
   let out = '# Index\n\n';
   for (const s of slugs) out += `- [[${s}]]\n`;
-  fs.writeFileSync(path.join(metaDir, 'index.md'), out);
+  safeWriteFile(path.join(metaDir, 'index.md'), out);
 }
 
 // ── wiki-config.json taxonomy: additive merge from note frontmatter ──────────
@@ -545,7 +578,7 @@ function rebuildTaxonomy() {
     if (fm.topic && !topics.includes(fm.topic)) topics.push(fm.topic);
   }
   cfg.domains = domains;
-  fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+  safeWriteFile(cfgPath, JSON.stringify(cfg, null, 2));
 }
 
 // ── WIKI.md domains block (only maintained when WIKI.md already exists) ───────
@@ -561,14 +594,14 @@ function updateWikiDomains() {
   content = re.test(content)
     ? content.replace(re, block)
     : `${content.trimEnd()}\n\n---\n\n## Domains\n\n${block}\n`;
-  fs.writeFileSync(wikiFile, content);
+  safeWriteFile(wikiFile, content);
 }
 
 // ── meta/log.md: append-only, grep-friendly operation log ────────────────────
 function appendLog() {
   if (!op || !title) return;
   if (!fs.existsSync(metaDir)) fs.mkdirSync(metaDir, { recursive: true });
-  fs.appendFileSync(path.join(metaDir, 'log.md'), `## [${today}] ${op} | ${title}\n\n`);
+  safeAppendFile(path.join(metaDir, 'log.md'), `## [${today}] ${op} | ${title}\n\n`);
 }
 
 rebuildMOC();

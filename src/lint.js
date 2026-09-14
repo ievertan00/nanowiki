@@ -422,6 +422,17 @@ function rewriteInboundLinks(notesDir, fromSlug, toSlug) {
   }
 }
 
+function tryRename(from, to) {
+  try {
+    fs.renameSync(from, to);
+    return true;
+  } catch (err) {
+    if (!['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+    console.warn(`Warning: could not rename locked note ${path.basename(from)}; leaving it in place.`);
+    return false;
+  }
+}
+
 export function renameToSchema(wikiPath) {
   const notesDir = path.join(wikiPath, 'notes');
   if (!fs.existsSync(notesDir)) return { renamed: [], flagged: [] };
@@ -449,7 +460,7 @@ export function renameToSchema(wikiPath) {
       while (taken.has(`${desired}-${n}`)) n++;
       desired = `${desired}-${n}`;
     }
-    fs.renameSync(path.join(notesDir, file), path.join(notesDir, `${desired}.md`));
+    if (!tryRename(path.join(notesDir, file), path.join(notesDir, `${desired}.md`))) continue;
     taken.delete(currentSlug);
     taken.add(desired);
     rewriteInboundLinks(notesDir, currentSlug, desired);

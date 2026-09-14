@@ -322,4 +322,16 @@ describe('renameToSchema', () => {
     fs.writeFileSync(path.join(vault, 'notes', 'AI-llm-Solo-2.md'), note({ domain: 'AI', topic: 'llm', title: 'Solo' }));
     assert.deepStrictEqual(renameToSchema(vault).renamed, [{ from: 'AI-llm-Solo-2', to: 'AI-llm-Solo' }]);
   });
+
+  test('leaves a locked note in place without aborting the lint pass', () => {
+    fs.writeFileSync(path.join(vault, 'notes', 'Locked.md'), note({ domain: 'AI', topic: 'llm', title: 'Locked' }));
+    const originalRename = fs.renameSync;
+    fs.renameSync = () => { const err = new Error('locked'); err.code = 'EPERM'; throw err; };
+    try {
+      assert.deepStrictEqual(renameToSchema(vault), { renamed: [], flagged: [] });
+    } finally {
+      fs.renameSync = originalRename;
+    }
+    assert.ok(fs.existsSync(path.join(vault, 'notes', 'Locked.md')));
+  });
 });
